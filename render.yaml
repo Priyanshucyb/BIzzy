@@ -1,0 +1,18 @@
+# Business OS v3 — Render blueprint (free tier se shuru)
+# Render par: New + → Blueprint → ye repo select karo, ya Web Service
+# haath se banao to neeche wali settings hi use hongi.
+# DATABASE_URL dashboard me haath se dalna hai (Neon ka connection string) —
+# sync: false ka matlab hai Render use khud nahi banayega, tum daloge.
+services:
+  - type: web
+    name: business-os-v3
+    env: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
