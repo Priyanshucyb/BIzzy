@@ -5,7 +5,7 @@
 # sync: false ka matlab hai Render use khud nahi banayega, tum daloge.
 services:
   - type: web
-    name: business-os-v3
+    name: bizyour
     env: node
     rootDir: backend
     buildCommand: npm install

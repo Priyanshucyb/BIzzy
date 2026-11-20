@@ -1,4 +1,90 @@
-# Business OS v3
+# BizYour — by DILIGENCE
+
+**Ek app, do hisse:**
+- **Workspace** — pura Business OS v3 (billing, stock, udhaar, purchases, GST, reports, WhatsApp) — bilkul waisa hi jaisa pehle tha.
+- **Business Mart** — businesses ke beech B2B bazaar: dukaan purchase inquiry daalti hai, matching wholesalers ko lead jaati hai, woh quote bhejte hain, mol-bhav hota hai, order lagta hai, aur maal aate hi **Workspace ki Purchases + stock me apne aap jud jata hai**.
+
+Sidebar me upar **🗂️ Workspace | 🛒 Business Mart** switch se dono ke beech aao-jao. Login, staff, subscription, language (English / हिंदी / Hinglish) — sab ek hi hai.
+
+## Logo / brand (Final) — bizyour.in
+
+Logo ki saari files `frontend/brand/` me hain — **final logo:** kaale rounded tile par mint→blue gradient infinity-ribbon, neeche wordmark "BizYour by DILIGENCE".
+
+| File | Kahan use karo |
+|---|---|
+| `bizyour-mark-512.png` | Sirf icon (app icon, social profile picture, Play Store/App Store) — app me pehle se laga hai |
+| `bizyour-logo.png` | Poora logo (icon + wordmark), light background (website, letterhead, invoices) |
+| `favicon-32.png` · `apple-touch-icon.png` | Browser tab / phone home-screen icon (app me pehle se laga hai) |
+
+Rang: ribbon **mint→blue gradient**, tile **black**, wordmark ink `#14213A` · app ka primary blue `#2563EB` · **Mart Amber `#F5A524`** (sirf chhota dot / accent). Naam hamesha **BizYour** likho (B aur Y dono capital). Website: **bizyour.in**.
+
+## Chalana — 2 minute me preview
+
+Pehle **Node.js 22 ya naya** install karo (https://nodejs.org → LTS). Phir:
+
+| | Demo ke saath preview | Normal start |
+|---|---|---|
+| **Mac** | `preview-demo.command` par double-click | `start-bizyour.command` |
+| **Windows** | `load-demo.bat`, phir `start-business-os.bat` | `start-business-os.bat` |
+
+Browser apne aap **http://localhost:4000** kholega. Buyer: `demo@businessos.app` / `demo1234` · Seller (doosri Private/Incognito window): `fresh@bizyour.demo` / `demo1234`.
+
+**Mac par pehli baar "unidentified developer" aaye to:** file par **right-click → Open → Open**. Ya Terminal me folder kholkar `bash preview-demo.command`.
+Band karna ho to Terminal window band karo (ya Ctrl+C). Data `backend/data/business-os.db` me rehta hai — dobara start karne par sab wahi milega.
+
+## Business Mart — kya-kya hai
+
+**Khareedna (Buying)**
+- **Restock from your data** — Workspace me jo saaman low-stock hai, uski ready inquiry ek tap me: quantity = pichhli khareed jitni, target = pichhla bhaav, supplier = pichhla supplier dikhta hai. Dashboard ke low-stock card par bhi "Restock on Business Mart" button hai.
+- **Purchase inquiry** — saaman, category, quantity + unit, target bhaav (optional), kab tak chahiye, delivery shehar, one-time/weekly/monthly, quality notes. **Naam chhupao** (order tak seller ko "A business in Delhi" dikhta hai) aur **sirf GST wale sellers** ke options. Form ke saath hi dikhta hai ki kitne sellers ko notification jayega.
+- **Matching** — sirf wohi sellers notify hote hain jo us category me bechte hain AUR us shehar me deliver karte hain (apna shehar + chune hue shehar, ya All India). Inquiry phir bhi Mart par public rehti hai.
+- **Quotes compare** — har quote: bhaav (target se kitna upar/neeche), kul rakam, delivery din, payment terms (COD / credit / advance), minimum order, validity, seller ki rating + deals + GST badge. **Best value / Lowest price / Fastest** tag apne aap.
+- **Chat + counter-offer** — har quote par buyer–seller chat; buyer counter-offer bhejta hai, seller apna bhaav update karta hai (buyer ko notification).
+- **Order** — quote accept → order (BM-0001…). Baaki quotes band. Minimum order se kam quantity par accept nahi hota.
+- **Maal aaya (Mark received)** — Workspace me normal purchase banti hai: supplier naam se mil gaya to wahi, warna naya; product inquiry wala / same naam wala / warna naya; **stock stock_movements se badhta hai** (bilkul manual purchase jaisa); "pehle se diya" rakam supplier payment banti hai, baaki "supplier ko dena" me dikhta hai. Bill no. = order no.
+- **Rating** (1–5★) delivery ke baad, **Reorder**, **WhatsApp** dusre business ko (number order ke baad hi dikhta hai), inquiry **WhatsApp par share** apne purane suppliers ko.
+- **Browse** — products (listings) aur sellers, category + search, seller profile (rating, deals, reviews, products).
+
+**Bechna (Selling)**
+- **Mart profile** — "Main Business Mart par bechta hoon" on karo, categories chuno, delivery shehar / All India, about. GST badge Workspace Settings ke GSTIN se aata hai.
+- **Leads** — "Matched to you" + "All open requests"; seedha aapse maangi gayi inquiry par "Asked you" tag.
+- **Quote bhejo / badlo / wapas lo**, **Quotes sent** list (Waiting / Won / Not selected…).
+- **Orders** — Confirm → Dispatch (buyer ko har step ka notification), cancel; buyer ki rating dikhti hai.
+- **My catalog** — wholesale bhaav + minimum order ke saath products list karo (Workspace stock se naam chun sakte ho), show/hide.
+
+**Notifications** — har lead, quote, counter, message, order step ka in-app inbox; sidebar badges har 30 second me update.
+
+**Permissions** — owner aur "All work" / "Stock only" staff Mart use kar sakte hain; "Billing only" staff ko Mart band hai. Mart profile sirf owner badal sakta hai. Subscription expire (read-only) ho to Mart me bhi naya post/quote/order nahi hota, dekhna chalta hai.
+
+### Demo (dono taraf)
+`load-demo.bat` ab Sharma General Store ke saath ek chhota bazaar bhi load karta hai:
+
+| Kaun | Login | Password |
+|---|---|---|
+| Buyer — Sharma General Store | `demo@businessos.app` | `demo1234` |
+| Seller — Fresh Supply Co (Delhi · FMCG, Staples, Oil) | `fresh@bizyour.demo` | `demo1234` |
+| Seller — Annapurna Rice Mills (Karnal · All India) | `rice@bizyour.demo` | `demo1234` |
+| Seller — Gupta Traders (Delhi · Tea, Spices; GST nahi) | `gupta@bizyour.demo` | `demo1234` |
+| Buyers — Verma Kirana / Hotel Saffron | `verma@bizyour.demo` / `saffron@bizyour.demo` | `demo1234` |
+
+**10-minute demo:** ek browser me Sharma, doosre (incognito) me Fresh Supply Co. Sharma → Business Mart → Surf Excel "Create inquiry" (quantity 24) → Fresh Supply → Selling → Leads → Send quote → Sharma → quote compare, counter-offer → Fresh → notification se price update → Sharma → Accept → Fresh → Orders → Confirm → Dispatch → Sharma → Mark received → Workspace → Purchases me BM-0001 aur Products me Surf Excel ka stock badha hua. Pehle se 500 kg Sona Masoori rice wali inquiry par 3 asli quotes bhi pade hain (compare dikhane ke liye).
+
+### Technical (Business Mart)
+- Code: `backend/mart.js` (saare `/api/mart/*` routes, server.js me ek line se register), `frontend/mart.js` (screens), CSS `styles.css` ke end me. Demo: `backend/seed-mart-demo.js`.
+- Tables (additive, koi ALTER nahi): `mart_profiles, mart_inquiries, mart_views, mart_quotes, mart_messages, mart_orders, mart_listings, mart_notifications` — SQLite aur Postgres dono me chalaya-jaancha gaya.
+- Mart data **cross-business** hai (ek inquiry kai sellers dekhte hain), isliye ye **per-business backup/restore me nahi** hai — ek dukaan ka restore doosri dukaanon ke quotes/orders nahi mitata. Mart se bani purchase (Workspace ka hissa) backup me hamesha ki tarah jaati hai. `migrate-to-cloud.js` Mart tables bhi copy karta hai.
+- **Local mode me Mart sirf usi computer ke businesses ke beech chalta hai.** Asli bazaar ke liye app **cloud mode** (ek shared server, `DEPLOY-GUIDE.md`) par chalana hoga taaki saare businesses ek hi database par hon.
+
+### Business Mart — abhi kya NAHI hai (imaandari se)
+- **Push / WhatsApp / SMS notifications nahi** — sirf in-app notifications + badges (30 sec polling). Auto WhatsApp alert ke liye WhatsApp Business API (paid) chahiye.
+- **Seller verification manual nahi hai** — "✔ GST" ka matlab sirf itna ki business ne GSTIN daala hai; GST portal se check nahi hota. Admin verification aage ka kaam.
+- **Payment Mart ke andar nahi hota** — paisa business aapas me dete hain; app sirf hisaab rakhta hai (purchase + supplier payment).
+- **Seller ki taraf Workspace me apne aap bill nahi banta** — seller chahe to Workspace → New Bill se khud bana sakta hai.
+- **Photos / multiple items per inquiry / mobile app** — abhi nahi; ek inquiry = ek saaman.
+
+---
+
+# Business OS v3 (Workspace)
 
 by DILIGENCE · **Pura business, ek hi app se — billing, inventory, customer aur payment sab ek jagah.**
 
@@ -70,7 +156,7 @@ Ek hi app, do mode — chunav sirf ek setting (`DATABASE_URL`) ka hai:
 - **PDF bill ek-click (SaaS Stage 1)** — bill detail aur bill-success par saaf **⬇ PDF Download** button: print view khulta hai, print window me **"Save as PDF"** chuno. Print bill par ab GST ke saath **CGST/SGST** hisaab bhi chhapta hai. (WhatsApp par bill ab bhi sirf text jata hai — PDF auto-attach nahi hota.)
 - **Billing me tez search (SaaS Stage 1)** — bill banate samay saaman wale box me type karte hi dropdown filter hota hai (search-as-you-type) — lambi list me scroll nahi karna padta.
 - **Owner + Staff access** — staff ko kaam ke hisaab se access (All / Billing only / Stock only). **Profit, kharcha aur reports sirf owner ko** — staff ko server se hi band hai, sirf button nahi chhupaya. Ek business ka data dusre business ko kabhi nahi dikhta.
-- **Language** — English / हिंदी, Settings se kabhi bhi badlo. WhatsApp message bhi usi language me banta hai.
+- **Language** — **English / हिंदी / Hinglish** — upar ke switch ya Settings se kabhi bhi badlo. WhatsApp message, Business Mart notifications aur customer ka hisaab page bhi usi language me bante hain. Hinglish ke saare labels `frontend/i18n-hg.js` me hain (English text → Hinglish), badalna ho to wahin badlo.
 - **Poora offline (local mode)** — app internet par koi call hi nahi karta: koi CDN nahi, koi font download nahi, koi tracking nahi. Ek hi cheez "bahar" jati hai — WhatsApp button dabane par browser me wa.me link khulta hai, woh bhi tumhare dabane par.
 - **Data Backup** — Settings (sirf owner) se ek click me poori database download: `business-os-backup-YYYYMMDD.db`.
 - Signup/Login password encrypted (bcrypt) ke saath; server band ho jaye to app saaf banner me batata hai ki kya check karna hai.

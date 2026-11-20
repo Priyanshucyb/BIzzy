@@ -1,4 +1,9 @@
-# Business OS v3 — Cloud Deploy Guide (Render + Neon, free tier)
+# BizYour — Cloud Deploy Guide (Render + Neon, free tier)
+
+> **Business Mart ke liye cloud zaruri hai.** Local mode me Mart sirf usi computer ke
+> businesses ke beech chalta hai. Asli bazaar tab banta hai jab saari dukaanen aur
+> wholesalers EK hi deployed URL par login karein — neeche wala setup wahi hai.
+> Mart ke liye koi extra setting nahi: wahi `DATABASE_URL`, tables boot par apne aap bante hain.
 
 App ko internet par dalne ke exact steps. Do cheezen chahiye:
 **Neon** (cloud database — data wahan rahega) aur **Render** (app/server wahan chalega).
@@ -45,7 +50,7 @@ CareCompass ke samay kiya tha.
 1. Render jo URL de (jaise `https://business-os-v3.onrender.com`) use kholo —
    Business OS ka login page aana chahiye.
 2. URL ke aakhir me `/api/health` jodo — ye dikhna chahiye:
-   `{"ok":true,"mode":"cloud","db":"postgres","stage":"A","app":"Business OS v3"}`
+   `{"ok":true,"mode":"cloud","db":"postgres","stage":"A","app":"BizYour by DILIGENCE","modules":["workspace","business-mart"]}`
    `mode:"cloud"` + `db:"postgres"` dikha matlab cloud setup sahi hai.
 
 ## Step 4 — Demo data cloud par load karo
@@ -63,7 +68,14 @@ Windows **CMD** me:
 set DATABASE_URL=postgres://...neon wali poori string...
 node seed-demo.js
 ```
-Phir deployed URL par **demo@businessos.app / demo1234** se login karke dekho.
+**Mac Terminal** me, `backend` folder ke andar:
+```
+export DATABASE_URL="postgres://...neon wali poori string..."
+node seed-demo.js
+node seed-mart-demo.js
+```
+(Windows me bhi `seed-demo.js` ke baad `node seed-mart-demo.js` chalao — Business Mart ke demo sellers ke liye.)
+Phir deployed URL par **demo@businessos.app / demo1234** (buyer) aur **fresh@bizyour.demo / demo1234** (seller) se login karke dekho.
 Seed dobara chalane se duplicate nahi banta ("Demo pehle se hai" aayega).
 
 ## Step 5 — Purana local data cloud par le jana (jab chaahe)
@@ -105,7 +117,7 @@ local dono mode ek hi code se chalte hain; chunav sirf is ek setting ka hai.
 Upar wala tareeka (sab kuch Render par) sabse simple hai aur woh **ab bhi
 bilkul waisa hi chalta hai**. Ye split wala rasta tab lo jab frontend ko
 Vercel ki speed/CDN chahiye ya apna domain is hisaab se lagana hai:
-**`app.<domain>`** → frontend (Vercel) · **`api.<domain>`** → backend (Render).
+**`app.bizyour.in`** → frontend (Vercel) · **`api.bizyour.in`** → backend (Render).
 Data hamesha ki tarah Neon (Postgres) me hi rahega.
 
 Dhyaan do: split mode me browser frontend wale domain se backend wale domain
@@ -152,24 +164,24 @@ nahi chalega.
 
 ### Step 3 — Apna domain lagao
 
-1. **Frontend:** Vercel project → **Settings → Domains** → `app.<domain>`
+1. **Frontend:** Vercel project → **Settings → Domains** → `app.bizyour.in`
    add karo. Vercel ek **CNAME** record dega — apne domain ke DNS me
    `app` → woh CNAME dalo.
 2. **Backend:** Render service → **Settings → Custom Domains** →
-   `api.<domain>` add karo. Render bhi ek **CNAME** dega — DNS me `api` →
+   `api.bizyour.in` add karo. Render bhi ek **CNAME** dega — DNS me `api` →
    woh CNAME dalo. (Free plan par custom domain ki seema ho sakti hai —
    Render ke current plan rules check kar lena; na mile to paid plan ya
    sirf `*.onrender.com` URL hi chalega, app phir bhi chalegi.)
 3. Domain active ho jaye (DNS + certificate, kuch minute) to **do jagah
    URL update** karo:
-   - `frontend/config.js` → `window.BOS_API_BASE = 'https://api.<domain>';`
+   - `frontend/config.js` → `window.BOS_API_BASE = 'https://api.bizyour.in';`
      phir Vercel par **redeploy** (config.js static file hai, redeploy
      bina purani file hi serve hogi — isiliye `vercel.json` me is file par
      no-cache header pehle se laga hai).
-   - Render env → `ALLOWED_ORIGINS` = `https://app.<domain>` (purana
+   - Render env → `ALLOWED_ORIGINS` = `https://app.bizyour.in` (purana
      vercel.app wala origin bhi rakhna ho to comma se jod do), phir
      backend **redeploy/restart**.
-4. `https://app.<domain>` kholo, login karke bill bana kar dekho — sab
+4. `https://app.bizyour.in` kholo, login karke bill bana kar dekho — sab
    waisa hi chalega, bas ab tumhare domain par.
 
 ### Split mode ki sachai

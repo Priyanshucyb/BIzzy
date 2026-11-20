@@ -76,6 +76,7 @@ const SCHEMA_SQL = `
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'staff' CHECK (role IN ('owner','staff')),
     access TEXT NOT NULL DEFAULT 'all' CHECK (access IN ('all','billing','stock')),
+    blocked INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     sync_status TEXT NOT NULL DEFAULT 'local'
@@ -560,7 +561,152 @@ const SCHEMA_SQL = `
   CREATE UNIQUE INDEX IF NOT EXISTS idx_subs_business ON subscriptions(business_id);
   CREATE INDEX IF NOT EXISTS idx_subpay_business ON subscription_payments(business_id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_onboarding_business ON onboarding(business_id);
+
+  -- ===== BizYour — Business Mart (B2B marketplace between businesses) =====
+  -- Same additive rule: new tables only, NO ALTER of existing tables.
+  -- Unlike every table above, Mart rows are CROSS-business by design (a
+  -- buyer's inquiry is seen by many sellers, a quote links two businesses),
+  -- so they are deliberately NOT in TABLES (the per-business backup/restore
+  -- walk) — restoring one shop must never delete other shops' quotes.
+  -- They ARE in MART_TABLES so migrate-to-cloud.js copies them.
+  -- The only bridge into a shop's private Workspace data is the buyer's own
+  -- "Mark received" action, which writes a normal purchase (stock goes up
+  -- through stock_movements exactly like a manual purchase).
+  CREATE TABLE IF NOT EXISTS mart_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_id INTEGER NOT NULL REFERENCES businesses(id),
+    display_name TEXT NOT NULL DEFAULT '',
+    city TEXT NOT NULL DEFAULT '',
+    area TEXT NOT NULL DEFAULT '',
+    about TEXT NOT NULL DEFAULT '',
+    categories TEXT NOT NULL DEFAULT '',
+    service_cities TEXT NOT NULL DEFAULT '',
+    all_india INTEGER NOT NULL DEFAULT 0,
+    is_seller INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS mart_inquiries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_id INTEGER NOT NULL REFERENCES businesses(id),
+    product TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    qty REAL NOT NULL DEFAULT 0,
+    unit TEXT NOT NULL DEFAULT 'kg',
+    target_price REAL,
+    city TEXT NOT NULL DEFAULT '',
+    need_by TEXT,
+    frequency TEXT NOT NULL DEFAULT 'One-time',
+    notes TEXT NOT NULL DEFAULT '',
+    show_name INTEGER NOT NULL DEFAULT 1,
+    verified_only INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'open',
+    source TEXT NOT NULL DEFAULT 'manual',
+    product_id INTEGER,
+    target_business_id INTEGER,
+    notified INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS mart_views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inquiry_id INTEGER NOT NULL REFERENCES mart_inquiries(id),
+    business_id INTEGER NOT NULL REFERENCES businesses(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS mart_quotes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inquiry_id INTEGER NOT NULL REFERENCES mart_inquiries(id),
+    seller_business_id INTEGER NOT NULL REFERENCES businesses(id),
+    price REAL NOT NULL DEFAULT 0,
+    moq REAL NOT NULL DEFAULT 0,
+    delivery_days INTEGER NOT NULL DEFAULT 1,
+    payment_terms TEXT NOT NULL DEFAULT 'Cash on delivery',
+    valid_days INTEGER NOT NULL DEFAULT 3,
+    note TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'sent',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS mart_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quote_id INTEGER NOT NULL REFERENCES mart_quotes(id),
+    sender_business_id INTEGER NOT NULL REFERENCES businesses(id),
+    kind TEXT NOT NULL DEFAULT 'text',
+    body TEXT NOT NULL DEFAULT '',
+    amount REAL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS mart_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inquiry_id INTEGER NOT NULL REFERENCES mart_inquiries(id),
+    quote_id INTEGER NOT NULL REFERENCES mart_quotes(id),
+    buyer_business_id INTEGER NOT NULL REFERENCES businesses(id),
+    seller_business_id INTEGER NOT NULL REFERENCES businesses(id),
+    product TEXT NOT NULL DEFAULT '',
+    qty REAL NOT NULL DEFAULT 0,
+    unit TEXT NOT NULL DEFAULT '',
+    price REAL NOT NULL DEFAULT 0,
+    total REAL NOT NULL DEFAULT 0,
+    payment_terms TEXT NOT NULL DEFAULT '',
+    delivery_days INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'placed',
+    purchase_id INTEGER,
+    rating INTEGER,
+    review TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS mart_listings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_id INTEGER NOT NULL REFERENCES businesses(id),
+    product_id INTEGER,
+    name TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    unit TEXT NOT NULL DEFAULT 'kg',
+    price REAL NOT NULL DEFAULT 0,
+    moq REAL NOT NULL DEFAULT 1,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS mart_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_id INTEGER NOT NULL REFERENCES businesses(id),
+    kind TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL DEFAULT '',
+    link_view TEXT NOT NULL DEFAULT '',
+    link_id INTEGER,
+    is_read INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_mart_profile_biz ON mart_profiles(business_id);
+  CREATE INDEX IF NOT EXISTS idx_mart_inq_biz ON mart_inquiries(business_id, id);
+  CREATE INDEX IF NOT EXISTS idx_mart_inq_status ON mart_inquiries(status, category);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_mart_views_once ON mart_views(inquiry_id, business_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_mart_quote_once ON mart_quotes(inquiry_id, seller_business_id);
+  CREATE INDEX IF NOT EXISTS idx_mart_quote_seller ON mart_quotes(seller_business_id);
+  CREATE INDEX IF NOT EXISTS idx_mart_msg_quote ON mart_messages(quote_id, id);
+  CREATE INDEX IF NOT EXISTS idx_mart_orders_buyer ON mart_orders(buyer_business_id, id);
+  CREATE INDEX IF NOT EXISTS idx_mart_orders_seller ON mart_orders(seller_business_id, id);
+  CREATE INDEX IF NOT EXISTS idx_mart_listings_biz ON mart_listings(business_id);
+  CREATE INDEX IF NOT EXISTS idx_mart_notif_biz ON mart_notifications(business_id, id);
 `;
+
+// Business Mart tables (cross-business — see the schema note above). Copied
+// by migrate-to-cloud.js after TABLES; never part of a one-shop backup.
+const MART_TABLES = [
+  'mart_profiles', 'mart_inquiries', 'mart_views', 'mart_quotes',
+  'mart_messages', 'mart_orders', 'mart_listings', 'mart_notifications'
+];
 
 // SQLite datetime('now') is UTC 'YYYY-MM-DD HH:MM:SS' text — the Postgres
 // expression below produces the exact same text from the clock.
@@ -738,6 +884,11 @@ async function init() {
     // link off, no due date = no alert); existing data is untouched.
     if (!custCols.includes('share_token')) sdb.exec("ALTER TABLE customers ADD COLUMN share_token TEXT");
     sdb.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_share_token ON customers(share_token)");
+    // Admin Panel upgrade migration (same idempotent pattern): the super
+    // admin can block an individual USER (not just a whole shop) — users
+    // gain a blocked flag; existing users stay unblocked (0).
+    const userCols = sdb.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+    if (!userCols.includes('blocked')) sdb.exec("ALTER TABLE users ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0");
     if (!invCols.includes('due_date')) sdb.exec("ALTER TABLE invoices ADD COLUMN due_date TEXT");
     if (!purCols.includes('due_date')) sdb.exec("ALTER TABLE purchases ADD COLUMN due_date TEXT");
     // Feature 2 migration: stock_movements gains the 'return' movement
@@ -798,6 +949,9 @@ async function init() {
       // token + due dates, all nullable, existing rows stay NULL.
       await client.query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS share_token TEXT");
       await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_share_token ON customers(share_token)");
+      // Admin Panel upgrade migration (same as the SQLite branch): users
+      // gain the per-user blocked flag; existing users stay unblocked.
+      await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked INTEGER NOT NULL DEFAULT 0");
       await client.query("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_date TEXT");
       await client.query("ALTER TABLE purchases ADD COLUMN IF NOT EXISTS due_date TEXT");
       // Feature 2 migration: widen the stock_movements type CHECK to
@@ -828,4 +982,4 @@ const db = new Proxy({}, {
   }
 });
 
-module.exports = { db, DB_PATH, ENGINE, MODE, TABLES, SCHEMA_SQL, PG_SCHEMA_SQL };
+module.exports = { db, DB_PATH, ENGINE, MODE, TABLES, MART_TABLES, SCHEMA_SQL, PG_SCHEMA_SQL };

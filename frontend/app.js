@@ -1,4 +1,4 @@
-// Business OS v2 — frontend logic (vanilla JS, served by the backend)
+// BizYour (Workspace) — frontend logic (vanilla JS, served by the backend)
 'use strict';
 
 const $ = (id) => document.getElementById(id);
@@ -53,48 +53,73 @@ function showErr(id, msg) { const e = $(id); if (!e) return; e.textContent = msg
 function hideErr(id) { const e = $(id); if (e) e.style.display = 'none'; }
 function friendly(err) {
   const map = {
-    'invalid email or password': 'Wrong email or password. / ईमेल या पासवर्ड गलत है।',
-    'email already registered': 'This email is already registered. Log in instead. / ये ईमेल पहले से registered है।',
-    'password must be at least 6 characters': 'Password must be at least 6 characters. / पासवर्ड कम से कम 6 अक्षरों का हो।',
-    'owner_only': 'Only the owner can do this. / ये सिर्फ़ owner कर सकता है।',
-    'email_not_verified': 'Email not verified yet. Enter the 6-digit code sent to your email. / ईमेल अभी verify नहीं हुआ — ईमेल पर भेजा 6 अंकों का code डालो।',
-    'email_pending_verification': 'This email is waiting for verification. Enter the code sent to it, or resend it. / ये ईमेल verification का इंतज़ार कर रहा है — भेजा हुआ code डालो, या फिर से भेजो।',
-    'invalid_otp': 'Wrong code. Check and try again. / Code गलत है, देखकर फिर डालो।',
-    'otp_expired': 'This code has expired (10 minutes). Resend a new code. / ये code expire हो गया (10 मिनट) — नया code भेजो।',
-    'otp_not_found': 'No active code for this email. Resend a new code. / इस ईमेल के लिए कोई active code नहीं — नया code भेजो।',
-    'otp_attempts_exceeded': 'Too many wrong attempts. Resend a new code. / बहुत ज़्यादा गलत कोशिशें — नया code भेजो।',
-    'otp_resend_too_soon': 'Wait a few seconds before resending the code. / Code फिर भेजने से पहले कुछ seconds रुको।',
-    'not_pending_verification': 'This account is already verified. Just log in. / ये खाता पहले से verified है — बस लॉगिन करो।',
-    'account_not_found': 'No account with this email. / इस ईमेल से कोई खाता नहीं है।',
-    'subscription_expired': 'Your subscription has ended — the app is read-only. Renew from Settings → Subscription & plan. / तुम्हारा subscription ख़त्म हो गया — app सिर्फ़ देखने के लिए है। Settings → Subscription & plan से renew करो।',
-    'gateway_not_configured': 'Online card/UPI payment is not live yet — please pay by UPI and submit the claim below. / Online payment अभी live नहीं है — UPI से payment करके नीचे claim भेजो।',
-    'plan_price_not_set': 'Plan price is not set yet. / Plan की price अभी set नहीं है।',
-    'invalid_upi_id': 'UPI ID sahi nahi lag raha — aise hona chahiye: yourname@okhdfc / UPI ID format galat hai.',
-    'top_plan_required': 'Ye feature (E-Way Bill / E-Invoice file) sirf top plan me hai. Plan upgrade karne par khul jayega. / This is a top-plan feature — upgrade to unlock.',
-    'gst_not_enabled': 'Is business ke liye GST OFF hai — pehle Settings me GST on karo. / GST is OFF for this business.',
-    'missing_fields': 'File banane ke liye kuch data missing hai — apna GSTIN (Settings) aur products ke HSN code check karo. / Some data is missing — check your GSTIN (Settings) and product HSN codes.',
-    'empty_file': 'File khali hai ya padhi nahi gayi — sahi CSV file chunein. / The file is empty or unreadable — pick a proper CSV file.',
-    'name_column_not_found': 'File me Name wala column nahi mila — pehli row me column ke naam hone chahiye (jaise Item Name, Party Name). / No Name column found — the first row must hold column names (like Item Name, Party Name).',
-    'too_many_rows': 'File bahut badi hai — ek baar me zyada se zyada 5000 rows import hoti hain. File ko do hisso me baant kar lao. / Too many rows — at most 5000 rows per import. Split the file and import in parts.',
-    'no_valid_rows': 'Ek bhi sahi row nahi mili — neeche wali galtiyan dekhkar file theek karein. / No valid rows found — fix the errors shown and try again.',
-    'import_failed': 'Import nahi ho paya — kuch change nahi hua hai. / The import failed — nothing was changed.',
-    'already_converted': 'Ye estimate pehle hi bill ban chuka hai. / This estimate has already been converted to a bill.',
-    'invalid due_date': 'Due date sahi nahi hai — sahi date chuno. / The due date is not valid — pick a proper date.',
-    'link_not_found': 'Ye hisab link band hai ya galat hai. / This hisab link is off or wrong.',
-    'shop_phone_missing': 'Dukaan ka phone number Settings me nahi hai — pehle wahan number bharo. / The shop phone number is not set in Settings — add it there first.',
-    'server_unreachable': 'Server se connection nahi ho raha — start-business-os.bat chala hua hai, ye check karein.'
+    'invalid email or password': ['Wrong email or password.', 'ईमेल या पासवर्ड गलत है।', 'Email ya password galat hai.'],
+    'email already registered': ['This email is already registered. Log in instead.', 'ये ईमेल पहले से registered है। लॉगिन करो।', 'Ye email pehle se registered hai. Login karo.'],
+    'password must be at least 6 characters': ['Password must be at least 6 characters.', 'पासवर्ड कम से कम 6 अक्षरों का हो।', 'Password kam se kam 6 character ka ho.'],
+    'owner_only': ['Only the owner can do this.', 'ये सिर्फ़ owner कर सकता है।', 'Ye sirf owner kar sakta hai.'],
+    'email_not_verified': ['Email not verified yet. Enter the 6-digit code sent to your email.', 'ईमेल अभी verify नहीं हुआ — ईमेल पर भेजा 6 अंकों का code डालो।', 'Email abhi verify nahi hua — email par bheja 6 digit ka code daalo.'],
+    'email_pending_verification': ['This email is waiting for verification. Enter the code sent to it, or resend it.', 'ये ईमेल verification का इंतज़ार कर रहा है — भेजा हुआ code डालो, या फिर से भेजो।', 'Ye email verification ke intezaar me hai — bheja hua code daalo, ya phir bhejo.'],
+    'invalid_otp': ['Wrong code. Check and try again.', 'Code गलत है, देखकर फिर डालो।', 'Code galat hai, dekh kar phir daalo.'],
+    'otp_expired': ['This code has expired (10 minutes). Resend a new code.', 'ये code expire हो गया (10 मिनट) — नया code भेजो।', 'Ye code expire ho gaya (10 minute) — naya code bhejo.'],
+    'otp_not_found': ['No active code for this email. Resend a new code.', 'इस ईमेल के लिए कोई active code नहीं — नया code भेजो।', 'Is email ke liye koi active code nahi — naya code bhejo.'],
+    'otp_attempts_exceeded': ['Too many wrong attempts. Resend a new code.', 'बहुत ज़्यादा गलत कोशिशें — नया code भेजो।', 'Bahut zyada galat koshish — naya code bhejo.'],
+    'otp_resend_too_soon': ['Wait a few seconds before resending the code.', 'Code फिर भेजने से पहले कुछ seconds रुको।', 'Code phir bhejne se pehle kuch second ruko.'],
+    'not_pending_verification': ['This account is already verified. Just log in.', 'ये खाता पहले से verified है — बस लॉगिन करो।', 'Ye account pehle se verified hai — bas login karo.'],
+    'account_not_found': ['No account with this email.', 'इस ईमेल से कोई खाता नहीं है।', 'Is email se koi account nahi hai.'],
+    'subscription_expired': ['Your subscription has ended — the app is read-only. Renew from Settings → Subscription & plan.', 'आपका subscription ख़त्म हो गया — app सिर्फ़ देखने के लिए है। Settings → Subscription & plan से renew करो।', 'Aapka subscription khatam ho gaya — app sirf dekhne ke liye hai. Settings → Subscription & plan se renew karo.'],
+    'gateway_not_configured': ['Online card/UPI payment is not live yet — please pay by UPI and submit the claim below.', 'Online payment अभी live नहीं है — UPI से payment करके नीचे claim भेजो।', 'Online payment abhi live nahi hai — UPI se payment karke neeche claim bhejo.'],
+    'plan_price_not_set': ['Plan price is not set yet.', 'Plan की price अभी set नहीं है।', 'Plan ki price abhi set nahi hai.'],
+    'invalid_upi_id': ['That UPI ID does not look right — it should look like yourname@okhdfc.', 'UPI ID सही नहीं लग रहा — ऐसा होना चाहिए: yourname@okhdfc', 'UPI ID sahi nahi lag raha — aisa hona chahiye: yourname@okhdfc'],
+    'top_plan_required': ['This is a top-plan feature (E-Way Bill / E-Invoice file) — upgrade to unlock.', 'ये feature (E-Way Bill / E-Invoice file) सिर्फ़ top plan में है। Plan upgrade करने पर खुल जाएगा।', 'Ye feature (E-Way Bill / E-Invoice file) sirf top plan me hai. Plan upgrade karne par khul jayega.'],
+    'gst_not_enabled': ['GST is OFF for this business — turn it on in Settings first.', 'इस business के लिए GST OFF है — पहले Settings में GST चालू करो।', 'Is business ke liye GST OFF hai — pehle Settings me GST on karo.'],
+    'missing_fields': ['Some data is missing — check your GSTIN (Settings) and product HSN codes.', 'File बनाने के लिए कुछ data missing है — अपना GSTIN (Settings) और products के HSN code जाँचो।', 'File banane ke liye kuch data missing hai — apna GSTIN (Settings) aur products ke HSN code check karo.'],
+    'empty_file': ['The file is empty or unreadable — pick a proper CSV file.', 'File खाली है या पढ़ी नहीं गई — सही CSV file चुनो।', 'File khaali hai ya padhi nahi gayi — sahi CSV file chuno.'],
+    'name_column_not_found': ['No Name column found — the first row must hold column names (like Item Name, Party Name).', 'File में Name वाला column नहीं मिला — पहली row में column के नाम होने चाहिए (जैसे Item Name, Party Name)।', 'File me Name wala column nahi mila — pehli row me column ke naam hone chahiye (jaise Item Name, Party Name).'],
+    'too_many_rows': ['Too many rows — at most 5000 rows per import. Split the file and import in parts.', 'File बहुत बड़ी है — एक बार में ज़्यादा से ज़्यादा 5000 rows। File को हिस्सों में बाँटकर लाओ।', 'File bahut badi hai — ek baar me zyada se zyada 5000 rows. File ko hisson me baant kar lao.'],
+    'no_valid_rows': ['No valid rows found — fix the errors shown and try again.', 'एक भी सही row नहीं मिली — नीचे की गलतियाँ देखकर file ठीक करो।', 'Ek bhi sahi row nahi mili — neeche wali galtiyan dekh kar file theek karo.'],
+    'import_failed': ['The import failed — nothing was changed.', 'Import नहीं हो पाया — कुछ नहीं बदला।', 'Import nahi ho paya — kuch change nahi hua.'],
+    'already_converted': ['This estimate has already been converted to a bill.', 'ये estimate पहले ही बिल बन चुका है।', 'Ye estimate pehle hi bill ban chuka hai.'],
+    'invalid due_date': ['The due date is not valid — pick a proper date.', 'Due date सही नहीं है — सही date चुनो।', 'Due date sahi nahi hai — sahi date chuno.'],
+    'link_not_found': ['This account link is off or wrong.', 'ये हिसाब लिंक बंद है या गलत है।', 'Ye hisaab link band hai ya galat hai.'],
+    'shop_phone_missing': ['The shop phone number is not set in Settings — add it there first.', 'दुकान का फ़ोन नंबर Settings में नहीं है — पहले वहाँ नंबर भरो।', 'Dukaan ka phone number Settings me nahi hai — pehle wahan number bharo.'],
+    'account_blocked': ['This account has been blocked by the DILIGENCE admin. Contact support.', 'ये खाता DILIGENCE admin ने block किया है — support से बात करो।', 'Ye khata DILIGENCE admin ne block kiya hai — support se baat karo.'],
+    'last_owner': ['This shop must always keep at least one owner — make another user the owner first.', 'इस दुकान का कम से कम एक owner होना ज़रूरी है — पहले किसी और को owner बनाओ।', 'Is dukaan ka kam se kam ek owner hona zaroori hai — pehle kisi aur ko owner banao.'],
+    'user_not_found': ['That user no longer exists.', 'वो user अब नहीं है।', 'Wo user ab nahi hai.'],
+    'business_not_found': ['That shop no longer exists.', 'वो दुकान अब नहीं है।', 'Wo dukaan ab nahi hai.'],
+    'plan_not_found': ['Plan not found.', 'Plan नहीं मिला।', 'Plan nahi mila.'],
+    'invalid_role': ['Role must be Owner or Staff.', 'Role Owner या Staff ही हो सकता है।', 'Role Owner ya Staff hi ho sakta hai.'],
+    'invalid_access': ['Access must be All, Billing or Stock.', 'Access All, Billing या Stock ही हो सकता है।', 'Access All, Billing ya Stock hi ho sakta hai.'],
+    'admin_only': ['Only the super admin can do this.', 'ये सिर्फ़ super admin कर सकता है।', 'Ye sirf super admin kar sakta hai.'],
+    'server_unreachable': ['Cannot reach the server — check that BizYour is running (start-bizyour.command / start-business-os.bat).', 'सर्वर से connection नहीं हो रहा — देखो कि BizYour चल रहा है (start-bizyour.command / start-business-os.bat)।', 'Server se connection nahi ho raha — check karo ki BizYour chal raha hai (start-bizyour.command / start-business-os.bat).']
   };
-  return map[err.message] || ('Something went wrong: ' + err.message);
+  const m = map[err.message];
+  return m ? tr(m[0], m[1], m[2]) : tr('Something went wrong: ', 'कुछ गड़बड़ हुई: ', 'Kuch gadbad hui: ') + err.message;
 }
 
 // ---------- language ----------
+// ---------- i18n: English / हिंदी / Hinglish ----------
+// Three UI languages. HTML labels carry data-en + data-hi; Hinglish comes
+// from frontend/i18n-hg.js (window.BOS_HG, keyed by the English text), and
+// code calls tr(en, hi[, hg]). Business language codes: 'en' | 'hi' | 'hg'.
+const LANGS = ['en', 'hi', 'hg'];
+function normLang(l) { return LANGS.includes(l) ? l : 'en'; }
+function curLang() { return document.documentElement.dataset.lang || 'en'; }
+function hgOf(en) { const d = window.BOS_HG || {}; return d[en] !== undefined ? d[en] : en; }
+function tr(en, hi, hg) {
+  const l = curLang();
+  if (l === 'hi') return hi;
+  if (l === 'hg') return hg !== undefined ? hg : hgOf(en);
+  return en;
+}
 function applyLang(lang) {
-  const hi = lang === 'hi';
-  document.querySelectorAll('[data-en]').forEach((el) => { el.textContent = hi ? el.dataset.hi : el.dataset.en; });
-  document.querySelectorAll('[data-en-ph]').forEach((el) => { el.placeholder = hi ? el.dataset.hiPh : el.dataset.enPh; });
-  $('langEn') && $('langEn').classList.toggle('on', !hi);
-  $('langHi') && $('langHi').classList.toggle('on', hi);
-  document.documentElement.lang = hi ? 'hi' : 'en';
+  lang = normLang(lang);
+  document.documentElement.dataset.lang = lang;
+  document.documentElement.lang = lang === 'hi' ? 'hi' : 'en';
+  const pick = (en, hi) => (lang === 'hi' ? hi : lang === 'hg' ? hgOf(en) : en);
+  document.querySelectorAll('[data-en]').forEach((el) => { el.textContent = pick(el.dataset.en, el.dataset.hi); });
+  document.querySelectorAll('[data-en-ph]').forEach((el) => { el.placeholder = pick(el.dataset.enPh, el.dataset.hiPh); });
+  document.querySelectorAll('[data-lang-only]').forEach((el) => { el.classList.toggle('hidden', el.dataset.langOnly !== lang); });
+  [['langEn', 'en'], ['langHi', 'hi'], ['langHg', 'hg']].forEach(([id, l]) => { const b = $(id); if (b) b.classList.toggle('on', l === lang); });
 }
 async function setLanguage(lang) {
   if (!me) { applyLang(lang); return; }
@@ -109,7 +134,7 @@ async function setLanguage(lang) {
 
 // ---------- view switching ----------
 function showView(name) {
-  ['view-login', 'view-signup', 'view-otp', 'view-forgot', 'view-admin', 'view-setup', 'view-app'].forEach((v) => $(v).classList.toggle('hidden', v !== name));
+  ['view-landing', 'view-login', 'view-signup', 'view-otp', 'view-forgot', 'view-admin', 'view-setup', 'view-app'].forEach((v) => $(v).classList.toggle('hidden', v !== name));
 }
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.remove('on'));
@@ -125,11 +150,11 @@ function renderShellBits() {
   if (!me) return;
   const b = me.business, u = me.user;
   $('sideBizName').textContent = b.name || '—';
-  $('sideBizCity').textContent = b.city || (b.language === 'hi' ? 'शहर सेट नहीं' : 'City not set');
+  $('sideBizCity').textContent = b.city || (tr("City not set", "शहर सेट नहीं"));
   $('sideUserName').textContent = u.name;
   $('sideUserRole').textContent = u.role === 'owner'
-    ? (b.language === 'hi' ? 'मालिक (Owner)' : 'Owner')
-    : (b.language === 'hi' ? 'स्टाफ · ' : 'Staff · ') + u.access;
+    ? (tr("Owner", "मालिक (Owner)"))
+    : (tr("Staff · ", "स्टाफ · ")) + u.access;
   $('avatarInit').textContent = initials(u.name);
   const gstBadge = $('gstBadge');
   gstBadge.textContent = b.gst_enabled ? 'GST: ON' : 'GST: OFF';
@@ -137,8 +162,8 @@ function renderShellBits() {
   $('dashBizName').textContent = b.name || '—';
   $('dashOwner').textContent = b.owner_name || u.name;
   $('dashGst').textContent = b.gst_enabled ? ('ON' + (b.gstin ? ' · ' + b.gstin : '')) : 'OFF';
-  $('dashLang').textContent = b.language === 'hi' ? 'हिंदी' : 'English';
-  $('welcomeTitle').textContent = (b.language === 'hi' ? 'नमस्ते, ' : 'Namaste, ') + (b.owner_name || u.name);
+  $('dashLang').textContent = tr("English", "हिंदी");
+  $('welcomeTitle').textContent = (tr("Welcome, ", "नमस्ते, ")) + (b.owner_name || u.name);
   applyLang(b.language);
 }
 
@@ -148,7 +173,7 @@ async function enterApp() {
   applyNavLocks();
   showScreen('dashboard');
   document.querySelectorAll('#nav .nav-item').forEach((n) => n.classList.toggle('active', n.dataset.screen === 'dashboard'));
-  $('pageTitle').textContent = me.business.language === 'hi' ? 'डैशबोर्ड' : 'Dashboard';
+  $('pageTitle').textContent = tr("Dashboard", "डैशबोर्ड");
   fillSettings();
   loadSyncStatus();
   loadDashboardStock();
@@ -185,9 +210,58 @@ function applyNavLocks() {
   });
 }
 
+// ---------- landing + logo intro ----------
+// The landing page has its own 3-language copy (data-lp-en/hi/hg on every
+// text leaf) so it can be FULL English / Hindi / Hinglish, independent of
+// the app's data-en/data-hi system. The choice is saved in localStorage
+// 'bos_lang' and also drives applyLang() so the auth screens follow.
+function landingDefaultLang() {
+  try { const s = localStorage.getItem('bos_lang'); return s ? normLang(s) : 'hg'; } catch (e) { return 'hg'; }
+}
+function applyLandingLang(lang) {
+  lang = normLang(lang);
+  try { localStorage.setItem('bos_lang', lang); } catch (e) {}
+  document.querySelectorAll('[data-lp-en]').forEach((el) => {
+    const v = lang === 'hi' ? el.dataset.lpHi : lang === 'hg' ? el.dataset.lpHg : el.dataset.lpEn;
+    if (v !== undefined) el.textContent = v;
+  });
+  [['lpLangEn', 'en'], ['lpLangHi', 'hi'], ['lpLangHg', 'hg']].forEach(([id, l]) => { const b = $(id); if (b) b.classList.toggle('on', l === lang); });
+  applyLang(lang);
+}
+function showLanding() {
+  showView('view-landing');
+  applyLandingLang(landingDefaultLang());
+  maybeIntro();
+}
+function maybeIntro() {
+  const ov = $('bzIntro');
+  if (!ov) return;
+  let seen = false;
+  try { seen = !!sessionStorage.getItem('bizyour_intro_seen'); } catch (e) {}
+  if (seen) return;
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  try { sessionStorage.setItem('bizyour_intro_seen', '1'); } catch (e) {}
+  ov.classList.remove('hidden');
+  document.body.classList.add('bz-intro-on');
+  let done = false;
+  function fin() {
+    if (done) return; done = true;
+    ov.classList.add('wipe');
+    setTimeout(() => {
+      ov.classList.add('hidden'); ov.classList.remove('wipe');
+      document.body.classList.remove('bz-intro-on');
+    }, 720);
+    document.removeEventListener('keydown', onKey);
+  }
+  function onKey(e) { if (e.key === 'Escape') fin(); }
+  document.addEventListener('keydown', onKey);
+  ov.addEventListener('click', fin);
+  setTimeout(fin, 2900);
+}
+
 async function boot() {
   $('todayLine').textContent = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  if (!token) { showView('view-login'); applyLang('en'); return; }
+  if (!token) { showLanding(); return; }
   try {
     me = await api('GET', '/api/me');
     if (me.user.role === 'superadmin') { enterAdmin(); return; }
@@ -195,7 +269,7 @@ async function boot() {
     await enterApp();
   } catch (e) {
     token = null; localStorage.removeItem('bos_token'); me = null;
-    showView('view-login'); applyLang('en');
+    showLanding();
   }
 }
 
@@ -237,6 +311,17 @@ $('setupForm').addEventListener('submit', async (e) => {
 $('goSignup').addEventListener('click', () => { showView('view-signup'); });
 $('goLogin').addEventListener('click', () => { showView('view-login'); });
 
+// ---------- landing page (public homepage for logged-out visitors) ----------
+function lpShowAuth(mode) {
+  showView(mode === 'signup' ? 'view-signup' : 'view-login');
+  window.scrollTo(0, 0);
+}
+['lpLoginBtn', 'lpLoginBtn2', 'lpFootLogin'].forEach((id) => { const b = $(id); if (b) b.addEventListener('click', () => lpShowAuth('login')); });
+['lpTrialBtn', 'lpTrialBtn2', 'lpTrialBtn3', 'lpFootSignup', 'lpFootTrial'].forEach((id) => { const b = $(id); if (b) b.addEventListener('click', () => lpShowAuth('signup')); });
+[['lpLangEn', 'en'], ['lpLangHi', 'hi'], ['lpLangHg', 'hg']].forEach(([id, l]) => { const b = $(id); if (b) b.addEventListener('click', () => applyLandingLang(l)); });
+$('loginHome').addEventListener('click', () => { showLanding(); window.scrollTo(0, 0); });
+$('signupHome').addEventListener('click', () => { showLanding(); window.scrollTo(0, 0); });
+
 $('signupForm').addEventListener('submit', async (e) => {
   e.preventDefault(); hideErr('signupErr');
   try {
@@ -277,7 +362,7 @@ function openOtpView(email, mailConfigured) {
   hideErr('otpErr'); $('otpOk').style.display = 'none';
   const note = $('otpDevNote');
   if (mailConfigured === false) {
-    note.textContent = 'Note: email sending is not configured on this server yet, so no live email was sent. (On the founder\'s test setup the code appears in the server log.) / नोट: इस server पर email भेजना अभी configured नहीं है, इसलिए live email नहीं गया।';
+    note.textContent = tr('Note: email sending is not configured on this server yet, so no live email was sent. (On a test setup the code appears in the server log.)', 'नोट: इस server पर email भेजना अभी configured नहीं है, इसलिए live email नहीं गया।', 'Note: is server par email bhejna abhi configured nahi hai, isliye live email nahi gaya. (Test setup me code server log me dikhta hai.)');
     note.classList.remove('hidden');
   } else note.classList.add('hidden');
   showView('view-otp');
@@ -297,7 +382,7 @@ $('otpResend').addEventListener('click', async () => {
   try {
     const r = await api('POST', '/api/auth/resend-otp', { email: otpEmail, purpose: 'signup' });
     const ok = $('otpOk');
-    ok.textContent = isHiLang() ? 'नया code भेजा गया ✓' : 'A new code was sent ✓';
+    ok.textContent = tr("A new code was sent ✓", "नया code भेजा गया ✓");
     ok.style.display = 'block';
     if (r.mail_configured === false) $('otpDevNote').classList.remove('hidden');
   } catch (err) { showErr('otpErr', friendly(err)); }
@@ -319,8 +404,8 @@ $('forgotForm').addEventListener('submit', async (e) => {
     const r = await api('POST', '/api/auth/forgot-password', { email: $('fgEmail').value });
     const ok = $('forgotOk');
     ok.textContent = r.mail_configured === false
-      ? 'Request noted. Note: email sending is not configured on this server yet, so no live email was sent. / नोट: email भेजना अभी configured नहीं है, इसलिए live email नहीं गया।'
-      : 'Reset code sent to your email ✓ / Reset code तुम्हारे ईमेल पर भेजा गया ✓';
+      ? tr('Request noted. Note: email sending is not configured on this server yet, so no live email was sent.', 'Request दर्ज हुई। नोट: email भेजना अभी configured नहीं है, इसलिए live email नहीं गया।', 'Request darj ho gayi. Note: email bhejna abhi configured nahi hai, isliye live email nahi gaya.')
+      : tr('Reset code sent to your email ✓', 'Reset code आपके ईमेल पर भेजा गया ✓', 'Reset code aapke email par bhej diya ✓');
     ok.style.display = 'block';
     $('resetForm').classList.remove('hidden');
   } catch (err) { showErr('forgotErr', friendly(err)); }
@@ -330,7 +415,7 @@ $('fgResend').addEventListener('click', async () => {
   try {
     await api('POST', '/api/auth/resend-otp', { email: $('fgEmail').value, purpose: 'reset' });
     const ok = $('forgotOk');
-    ok.textContent = 'A new code was sent ✓ / नया code भेजा गया ✓';
+    ok.textContent = tr('A new code was sent ✓', 'नया code भेजा गया ✓', 'Naya code bheja gaya ✓');
     ok.style.display = 'block';
   } catch (err) { showErr('forgotErr', friendly(err)); }
 });
@@ -339,7 +424,7 @@ $('resetForm').addEventListener('submit', async (e) => {
   try {
     await api('POST', '/api/auth/reset-password', { email: $('fgEmail').value, otp: $('fgOtp').value.trim(), password: $('fgPass').value });
     const ok = $('forgotOk');
-    ok.textContent = 'Password changed ✓ — now log in with the new password. / पासवर्ड बदल गया ✓ — अब नए पासवर्ड से लॉगिन करो।';
+    ok.textContent = tr('Password changed ✓ — now log in with the new password.', 'पासवर्ड बदल गया ✓ — अब नए पासवर्ड से लॉगिन करो।', 'Password badal gaya ✓ — ab naye password se login karo.');
     ok.style.display = 'block';
     $('loginEmail').value = $('fgEmail').value;
     setTimeout(() => showView('view-login'), 900);
@@ -366,23 +451,19 @@ document.querySelectorAll('#nav .nav-item').forEach((btn) => btn.addEventListene
   const s = btn.dataset.screen;
   const hi = me && me.business.language === 'hi';
   const label = btn.querySelector('[data-en]');
-  const labelTxt = label ? (hi ? label.dataset.hi : label.dataset.en) : btn.textContent.trim();
+  const labelTxt = label ? tr(label.dataset.en, label.dataset.hi) : btn.textContent.trim();
   if (btn.dataset.locked) {
     $('soonTitle').textContent = '🔒 ' + labelTxt;
-    $('soonText').textContent = hi
-      ? 'खर्चा और मुनाफ़ा सिर्फ़ owner देख सकता है। Staff को ये हिस्सा नहीं दिखता — ये मालिक का नियम है।'
-      : 'Expenses and profit are owner-only. Staff cannot see this part — that is the owner\'s rule.';
+    $('soonText').textContent = tr("Expenses and profit are owner-only. Staff cannot see this part — that is the owner's rule.", "खर्चा और मुनाफ़ा सिर्फ़ owner देख सकता है। Staff को ये हिस्सा नहीं दिखता — ये मालिक का नियम है।");
     $('pageTitle').textContent = labelTxt;
     showScreen('soon');
   } else if (s === 'soon') {
     $('soonTitle').textContent = labelTxt;
-    $('soonText').textContent = hi
-      ? `ये हिस्सा ${btn.dataset.stage} में बनेगा। लॉगिन, सेटअप, स्टॉक, बिलिंग और ग्राहक अभी चल रहे हैं।`
-      : `This module is built in ${btn.dataset.stage}. Login, setup, stock, billing and customers are already live.`;
+    $('soonText').textContent = tr(`This module is built in ${btn.dataset.stage}. Login, setup, stock, billing and customers are already live.`, `ये हिस्सा ${btn.dataset.stage} में बनेगा। लॉगिन, सेटअप, स्टॉक, बिलिंग और ग्राहक अभी चल रहे हैं।`, `Ye hissa ${btn.dataset.stage} me banega. Login, setup, stock, billing aur customers abhi chal rahe hain.`);
     $('pageTitle').textContent = labelTxt;
     showScreen('soon');
   } else {
-    $('pageTitle').textContent = screenTitles[s] ? screenTitles[s][hi ? 1 : 0] : labelTxt;
+    $('pageTitle').textContent = screenTitles[s] ? tr(screenTitles[s][0], screenTitles[s][1]) : labelTxt;
     showScreen(s);
     if (s === 'settings') { fillSettings(); loadSyncStatus(); if (me && me.user.role === 'owner') { loadSubscription(); loadBackups(); } }
     if (s === 'history') { loadAudit(true); loadConflicts(); }
@@ -402,6 +483,7 @@ document.querySelectorAll('#nav .nav-item').forEach((btn) => btn.addEventListene
 // ---------- language topbar ----------
 $('langEn').addEventListener('click', () => setLanguage('en'));
 $('langHi').addEventListener('click', () => setLanguage('hi'));
+$('langHg').addEventListener('click', () => setLanguage('hg'));
 
 // ---------- global search (SaaS Stage 1) ----------
 // One box in the topbar: products, customers, suppliers and bill numbers
@@ -443,27 +525,27 @@ async function runGlobalSearch(q) {
       box.appendChild(d);
     };
     if (r.products.length) {
-      section(isHi() ? 'सामान' : 'Products');
-      r.products.forEach((p) => item(p.name, `${fmt(p.sell_price)} · ${isHi() ? 'स्टॉक' : 'stock'} ${fmtQty(p.stock_qty)}`, () => {
+      section(tr("Products", "सामान"));
+      r.products.forEach((p) => item(p.name, `${fmt(p.sell_price)} · ${tr("stock", "स्टॉक")} ${fmtQty(p.stock_qty)}`, () => {
         $('prodSearch').value = p.name;
         gotoScreen('products');
       }));
     }
     if (r.customers.length) {
-      section(isHi() ? 'ग्राहक' : 'Customers');
-      r.customers.forEach((c) => item(c.name, (c.phone || '') + (c.pending > 0 ? ` · ${isHi() ? 'बाकी' : 'pending'} ${fmt(c.pending)}` : ''), () => {
+      section(tr("Customers", "ग्राहक"));
+      r.customers.forEach((c) => item(c.name, (c.phone || '') + (c.pending > 0 ? ` · ${tr("pending", "बाकी")} ${fmt(c.pending)}` : ''), () => {
         gotoScreen('customers');
         openCustomerDetail(c.id);
       }));
     }
     if (r.suppliers.length) {
-      section(isHi() ? 'सप्लायर' : 'Suppliers');
-      r.suppliers.forEach((s) => item(s.name, (s.phone || '') + (s.pending > 0 ? ` · ${isHi() ? 'देना बाकी' : 'to pay'} ${fmt(s.pending)}` : ''), () => {
+      section(tr("Suppliers", "सप्लायर"));
+      r.suppliers.forEach((s) => item(s.name, (s.phone || '') + (s.pending > 0 ? ` · ${tr("to pay", "देना बाकी")} ${fmt(s.pending)}` : ''), () => {
         gotoScreen('suppliers');
       }));
     }
     if (r.invoices.length) {
-      section(isHi() ? 'बिल' : 'Bills');
+      section(tr("Bills", "बिल"));
       r.invoices.forEach((inv) => item(`#${inv.bill_no} · ${inv.customer_name}`, `${inv.date} · ${fmt(inv.total)} · ${inv.status}`, () => {
         gotoScreen('billing');
         openInvoiceDetail(inv.id);
@@ -472,7 +554,7 @@ async function runGlobalSearch(q) {
     if (!any) {
       const d = document.createElement('div');
       d.className = 'gs-item gs-empty';
-      d.textContent = isHi() ? 'कुछ नहीं मिला' : 'Nothing found';
+      d.textContent = tr("Nothing found", "कुछ नहीं मिला");
       box.appendChild(d);
     }
     box.classList.remove('hidden');
@@ -493,8 +575,7 @@ function fillSettings() {
   $('setUpiId').value = b.upi_id || '';
   $('setUpiName').value = b.upi_payee_name || '';
   setLangSel = b.language || 'en';
-  $('setLangEn').classList.toggle('sel', setLangSel === 'en');
-  $('setLangHi').classList.toggle('sel', setLangSel === 'hi');
+  ['en', 'hi', 'hg'].forEach((l) => { const c = $('setLang' + l[0].toUpperCase() + l[1]); if (c) c.classList.toggle('sel', setLangSel === l); });
   const owner = me.user.role === 'owner';
   ['setName', 'setOwner', 'setPhone', 'setCity', 'setGst', 'setGstin', 'setUpiId', 'setUpiName'].forEach((id) => { $(id).disabled = !owner; });
   $('setSaveBtn').disabled = !owner;
@@ -506,8 +587,10 @@ function fillSettings() {
   $('syncCard').classList.toggle('hidden', false);
 }
 $('setGst').addEventListener('change', (e) => $('setGstinWrap').classList.toggle('hidden', !e.target.checked));
-$('setLangEn').addEventListener('click', () => { setLangSel = 'en'; $('setLangEn').classList.add('sel'); $('setLangHi').classList.remove('sel'); });
-$('setLangHi').addEventListener('click', () => { setLangSel = 'hi'; $('setLangHi').classList.add('sel'); $('setLangEn').classList.remove('sel'); });
+['setLangEn', 'setLangHi', 'setLangHg'].forEach((id) => $(id).addEventListener('click', () => {
+  setLangSel = $(id).dataset.lang;
+  ['setLangEn', 'setLangHi', 'setLangHg'].forEach((x) => $(x).classList.toggle('sel', x === id));
+}));
 
 $('settingsForm').addEventListener('submit', async (e) => {
   e.preventDefault(); hideErr('setErr'); $('setOk').style.display = 'none';
@@ -521,7 +604,7 @@ $('settingsForm').addEventListener('submit', async (e) => {
     me.business = r.business;
     renderShellBits(); fillSettings();
     const ok = $('setOk');
-    ok.textContent = me.business.language === 'hi' ? 'सेटिंग सेव हो गई ✓' : 'Settings saved ✓';
+    ok.textContent = tr("Settings saved ✓", "सेटिंग सेव हो गई ✓");
     ok.style.display = 'block';
   } catch (err) { showErr('setErr', friendly(err)); }
 });
@@ -535,22 +618,22 @@ async function loadStaff() {
     const tb = $('staffRows');
     tb.innerHTML = '';
     r.staff.forEach((u) => {
-      const tr = document.createElement('tr');
+      const row = document.createElement('tr');
       const roleTag = u.role === 'owner' ? '<span class="tag tag-paid">Owner</span>' : '<span class="tag tag-part">Staff</span>';
-      tr.innerHTML = `<td><b></b></td><td></td><td>${roleTag}</td><td>${u.role === 'owner' ? 'All' : (accessLabel[u.access] || u.access)}</td><td></td>`;
-      tr.children[0].querySelector('b').textContent = u.name;
-      tr.children[1].textContent = u.email;
+      row.innerHTML = `<td><b></b></td><td></td><td>${roleTag}</td><td>${u.role === 'owner' ? 'All' : (accessLabel[u.access] || u.access)}</td><td></td>`;
+      row.children[0].querySelector('b').textContent = u.name;
+      row.children[1].textContent = u.email;
       if (u.role !== 'owner') {
         const btn = document.createElement('button');
         btn.className = 'btn btn-danger btn-sm';
-        btn.textContent = me.business.language === 'hi' ? 'हटाओ' : 'Remove';
+        btn.textContent = tr("Remove", "हटाओ");
         btn.addEventListener('click', async () => {
           if (!confirm('Remove ' + u.name + '?')) return;
           try { await api('DELETE', '/api/staff/' + u.id); loadStaff(); } catch (err) { showErr('staffErr', friendly(err)); }
         });
-        tr.children[4].appendChild(btn);
+        row.children[4].appendChild(btn);
       }
-      tb.appendChild(tr);
+      tb.appendChild(row);
     });
   } catch (e) { /* staff list is owner-only; ignore for staff */ }
 }
@@ -587,52 +670,48 @@ function renderSubBanner(s) {
   const b = $('subBanner');
   if (!b) return;
   const hi = isHi();
-  const lbl = (subStatusLabel[s.status] || [s.status, s.status])[hi ? 1 : 0];
+  const lbl = (function (x) { return tr(x[0], x[1]); })(subStatusLabel[s.status] || [s.status, s.status]);
   let show = false, bg = '#e8f5e9', msg = '';
   if (s.status === 'trial' && s.days_left <= 7) {
     show = true; bg = '#fff8e1';
-    msg = hi ? `⏳ Free trial: ${s.days_left} दिन बाकी (${fmtDateOnly(s.ends_at)} तक)। Plan लेने के लिए Settings → Subscription & plan।`
-      : `⏳ Free trial: ${s.days_left} day(s) left (till ${fmtDateOnly(s.ends_at)}). Renew from Settings → Subscription & plan.`;
+    msg = tr(`⏳ Free trial: ${s.days_left} day(s) left (till ${fmtDateOnly(s.ends_at)}). Renew from Settings → Subscription & plan.`, `⏳ Free trial: ${s.days_left} दिन बाकी (${fmtDateOnly(s.ends_at)} तक)। Plan लेने के लिए Settings → Subscription & plan।`, `⏳ Free trial: ${s.days_left} din bache (${fmtDateOnly(s.ends_at)} tak). Plan ke liye Settings → Subscription & plan.`);
   } else if (s.status === 'active' && s.days_left <= 7 && s.days_left >= 0) {
     show = true; bg = '#fff8e1';
-    msg = hi ? `⏳ Plan: ${s.days_left} दिन बाकी (${fmtDateOnly(s.ends_at)} तक)। समय पर renew कर लो।`
-      : `⏳ Plan: ${s.days_left} day(s) left (till ${fmtDateOnly(s.ends_at)}). Renew in time.`;
+    msg = tr(`⏳ Plan: ${s.days_left} day(s) left (till ${fmtDateOnly(s.ends_at)}). Renew in time.`, `⏳ Plan: ${s.days_left} दिन बाकी (${fmtDateOnly(s.ends_at)} तक)। समय पर renew कर लो।`, `⏳ Plan: ${s.days_left} din bache (${fmtDateOnly(s.ends_at)} tak). Time par renew kar lo.`);
   } else if (s.status === 'grace') {
     show = true; bg = '#fff3e0';
-    msg = hi ? `⚠️ Plan ख़त्म हो गया है — grace period चल रहा है। Renew न किया तो app सिर्फ़ देखने के लिए रह जाएगा। Settings → Subscription & plan।`
-      : `⚠️ Your plan has ended — grace period is running. Renew soon or the app becomes read-only. Settings → Subscription & plan.`;
+    msg = tr(`⚠️ Your plan has ended — grace period is running. Renew soon or the app becomes read-only. Settings → Subscription & plan.`, `⚠️ Plan ख़त्म हो गया है — grace period चल रहा है। Renew न किया तो app सिर्फ़ देखने के लिए रह जाएगा। Settings → Subscription & plan।`, `⚠️ Plan khatam ho gaya hai — grace period chal raha hai. Jaldi renew karo warna app sirf dekhne ke liye reh jayega. Settings → Subscription & plan.`);
   } else if (s.read_only) {
     show = true; bg = '#fdecea';
-    msg = hi ? `🔒 Subscription ख़त्म — app read-only है। पुराना data देख सकते हो, नया bill नहीं बनेगा। Renew: Settings → Subscription & plan।`
-      : `🔒 Subscription ended — the app is read-only. You can see old data but cannot add new bills. Renew: Settings → Subscription & plan.`;
+    msg = tr(`🔒 Subscription ended — the app is read-only. You can see old data but cannot add new bills. Renew: Settings → Subscription & plan.`, `🔒 Subscription ख़त्म — app read-only है। पुराना data देख सकते हो, नया bill नहीं बनेगा। Renew: Settings → Subscription & plan।`, `🔒 Subscription khatam — app read-only hai. Purana data dekh sakte ho, naya bill nahi banega. Renew: Settings → Subscription & plan.`);
   }
   b.classList.toggle('hidden', !show);
   if (show) { b.style.background = bg; b.textContent = msg; }
 }
 function renderSubCard(r) {
   const s = r.subscription, hi = isHi();
-  const lbl = (subStatusLabel[s.status] || [s.status, s.status])[hi ? 1 : 0];
+  const lbl = (function (x) { return tr(x[0], x[1]); })(subStatusLabel[s.status] || [s.status, s.status]);
   $('subStatus').innerHTML =
-    `<div class="check-row"><span>${hi ? 'हालत' : 'Status'}</span><b style="margin-left:auto">${esc(lbl)}</b></div>` +
-    `<div class="check-row"><span>${hi ? 'Plan' : 'Plan'}</span><b style="margin-left:auto">${esc(s.plan_code || (hi ? 'कोई नहीं (trial)' : 'None (trial)'))}</b></div>` +
-    `<div class="check-row"><span>${hi ? 'कब तक' : 'Valid till'}</span><b style="margin-left:auto">${fmtDateOnly(s.ends_at)}${s.days_left >= 0 ? ` (${s.days_left} ${hi ? 'दिन' : 'day(s)'})` : ''}</b></div>` +
-    `<div class="check-row"><span>Grace</span><b style="margin-left:auto">${s.grace_days} ${hi ? 'दिन' : 'day(s)'}</b></div>`;
+    `<div class="check-row"><span>${tr("Status", "हालत")}</span><b style="margin-left:auto">${esc(lbl)}</b></div>` +
+    `<div class="check-row"><span>${tr("Plan", "Plan")}</span><b style="margin-left:auto">${esc(s.plan_code || (tr("None (trial)", "कोई नहीं (trial)")))}</b></div>` +
+    `<div class="check-row"><span>${tr("Valid till", "कब तक")}</span><b style="margin-left:auto">${fmtDateOnly(s.ends_at)}${s.days_left >= 0 ? ` (${s.days_left} ${tr("day(s)", "दिन")})` : ''}</b></div>` +
+    `<div class="check-row"><span>Grace</span><b style="margin-left:auto">${s.grace_days} ${tr("day(s)", "दिन")}</b></div>`;
   $('subPlans').innerHTML = r.plans.map((p) =>
-    `<div class="check-row"><span>${esc(p.name)} · ${p.duration_days} ${hi ? 'दिन' : 'days'}</span><b style="margin-left:auto">${Number(p.price) > 0 ? fmt(p.price) : (hi ? 'Price अभी set नहीं' : 'Price not set yet')}</b></div>`
+    `<div class="check-row"><span>${esc(p.name)} · ${p.duration_days} ${tr("days", "दिन")}</span><b style="margin-left:auto">${Number(p.price) > 0 ? fmt(p.price) : (tr("Price not set yet", "Price अभी set नहीं"))}</b></div>`
   ).join('');
   const sel = $('claimPlan');
   const cur = sel.value;
-  sel.innerHTML = r.plans.map((p) => `<option value="${esc(p.code)}">${esc(p.name)} — ${Number(p.price) > 0 ? fmt(p.price) : (hi ? 'price set नहीं' : 'price not set')}</option>`).join('');
+  sel.innerHTML = r.plans.map((p) => `<option value="${esc(p.code)}">${esc(p.name)} — ${Number(p.price) > 0 ? fmt(p.price) : (tr("price not set", "price set नहीं"))}</option>`).join('');
   if (cur) sel.value = cur;
   syncClaimAmount();
   $('subGatewayNote').textContent = r.gateway_configured
-    ? (hi ? 'Online payment (Razorpay) चालू है — payment के बाद plan अपने आप बढ़ेगा।' : 'Online payment (Razorpay) is live — your plan extends automatically after payment.')
-    : (hi ? 'ℹ️ Online card/UPI gateway अभी live नहीं है (Razorpay key बाकी है)। UPI से payment करके ऊपर claim भेजो — verify होते ही plan चालू होगा।' : 'ℹ️ The online payment gateway is not live yet (Razorpay keys pending). Pay by UPI and submit the claim above — your plan activates after verification.');
+    ? (tr("Online payment (Razorpay) is live — your plan extends automatically after payment.", "Online payment (Razorpay) चालू है — payment के बाद plan अपने आप बढ़ेगा।"))
+    : (tr("ℹ️ The online payment gateway is not live yet (Razorpay keys pending). Pay by UPI and submit the claim above — your plan activates after verification.", "ℹ️ Online card/UPI gateway अभी live नहीं है (Razorpay key बाकी है)। UPI से payment करके ऊपर claim भेजो — verify होते ही plan चालू होगा।"));
   const payBox = $('subPayments');
-  if (!r.payments.length) { payBox.innerHTML = `<div class="hint">${hi ? 'अभी कोई payment नहीं।' : 'No payments yet.'}</div>`; return; }
+  if (!r.payments.length) { payBox.innerHTML = `<div class="hint">${tr("No payments yet.", "अभी कोई payment नहीं।")}</div>`; return; }
   payBox.innerHTML = '';
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th>${hi ? 'तारीख़' : 'Date'}</th><th>Plan</th><th>${hi ? 'रकम' : 'Amount'}</th><th>${hi ? 'हालत' : 'Status'}</th><th>Invoice</th></tr></thead>`;
+  tbl.innerHTML = `<thead><tr><th>${tr("Date", "तारीख़")}</th><th>Plan</th><th>${tr("Amount", "रकम")}</th><th>${tr("Status", "हालत")}</th><th>Invoice</th></tr></thead>`;
   const tb = document.createElement('tbody');
   r.payments.forEach((p) => {
     const tr = document.createElement('tr');
@@ -671,7 +750,7 @@ $('claimForm').addEventListener('submit', async (e) => {
     });
     $('claimRef').value = '';
     const ok = $('subOk');
-    ok.textContent = isHi() ? 'Claim भेजा गया ✓ — DILIGENCE verify करके plan चालू करेगा।' : 'Claim sent ✓ — DILIGENCE will verify and activate your plan.';
+    ok.textContent = tr("Claim sent ✓ — DILIGENCE will verify and activate your plan.", "Claim भेजा गया ✓ — DILIGENCE verify करके plan चालू करेगा।");
     ok.style.display = 'block';
     loadSubscription();
   } catch (err) { showErr('subErr', friendly(err)); }
@@ -681,8 +760,8 @@ async function printSubInvoice(paymentId) {
     const r = await api('GET', '/api/subscription/invoice/' + paymentId);
     const inv = r.invoice;
     $('prBiz').textContent = 'DILIGENCE';
-    $('prTitle').textContent = (isHi() ? 'सब्सक्रिप्शन इनवॉइस' : 'Subscription Invoice') + ' — ' + inv.invoice_no;
-    $('prSub').textContent = `${inv.date} · Business OS plan: ${inv.plan_name}`;
+    $('prTitle').textContent = (tr("Subscription Invoice", "सब्सक्रिप्शन इनवॉइस")) + ' — ' + inv.invoice_no;
+    $('prSub').textContent = `${inv.date} · BizYour plan: ${inv.plan_name}`;
     $('prBody').innerHTML =
       `<table><thead><tr><th>Detail</th><th class="pb-num">Amount ₹</th></tr></thead><tbody>` +
       `<tr><td>Billed to</td><td class="pb-num">${esc(inv.business ? inv.business.name || inv.business.owner_name : '')}</td></tr>` +
@@ -737,13 +816,13 @@ async function loadOnboarding() {
     if (next) {
       const t = document.createElement('div');
       t.className = 'ob-next-title';
-      t.textContent = (hi ? 'अगला step: ' : 'Next step: ') + (hi ? next.title_hi : next.title_en);
+      t.textContent = (tr("Next step: ", "अगला step: ")) + tr(next.title_en, next.title_hi);
       const d = document.createElement('div');
       d.className = 'hint'; d.style.margin = '2px 0 8px';
-      d.textContent = hi ? next.desc_hi : next.desc_en;
-      nbox.append(t, d, mkBtn(hi ? 'अभी करो →' : 'Do it now →', 'btn-blue', () => go(next)));
+      d.textContent = tr(next.desc_en, next.desc_hi);
+      nbox.append(t, d, mkBtn(tr("Do it now →", "अभी करो →"), 'btn-blue', () => go(next)));
       if (next.manual && owner) {
-        const tick = mkBtn(hi ? '✓ हो गया' : '✓ Done', 'btn-soft', async () => {
+        const tick = mkBtn(tr("✓ Done", "✓ हो गया"), 'btn-soft', async () => {
           try { await api('POST', '/api/onboarding/whatsapp-done'); loadOnboarding(); } catch (e) { /* ignore */ }
         });
         tick.style.marginLeft = '8px';
@@ -761,21 +840,21 @@ async function loadOnboarding() {
       const txt = document.createElement('span');
       txt.className = 'ob-row-txt';
       const title = document.createElement('b');
-      title.textContent = `${i + 1}. ${hi ? s.title_hi : s.title_en}`;
+      title.textContent = `${i + 1}. ${tr(s.title_en, s.title_hi)}`;
       const desc = document.createElement('span');
       desc.className = 'hint ob-row-desc';
-      desc.textContent = hi ? s.desc_hi : s.desc_en;
+      desc.textContent = tr(s.desc_en, s.desc_hi);
       txt.append(title, document.createElement('br'), desc);
       rowEl.append(mark, txt);
       if (!s.done) {
         const btns = document.createElement('span');
         btns.className = 'ob-row-btns';
-        btns.appendChild(mkBtn(hi ? 'करो →' : 'Do →', 'btn-soft', () => go(s)));
+        btns.appendChild(mkBtn(tr("Do →", "करो →"), 'btn-soft', () => go(s)));
         if (s.manual && owner) {
           const tick = mkBtn('✓', 'btn-soft', async () => {
             try { await api('POST', '/api/onboarding/whatsapp-done'); loadOnboarding(); } catch (e) { /* ignore */ }
           });
-          tick.title = hi ? 'हो गया mark करो' : 'Mark done';
+          tick.title = tr("Mark done", "हो गया mark करो");
           tick.style.marginLeft = '6px';
           btns.appendChild(tick);
         }
@@ -791,8 +870,8 @@ $('onboardToggle').addEventListener('click', () => {
   $('onboardSteps').classList.toggle('hidden', !onboardExpanded);
   const t = $('onboardToggle');
   t.textContent = onboardExpanded
-    ? (isHi() ? 'Steps छिपाओ' : 'Hide steps')
-    : (isHi() ? 'सारे steps देखो' : 'See all steps');
+    ? (tr("Hide steps", "Steps छिपाओ"))
+    : (tr("See all steps", "सारे steps देखो"));
 });
 $('onboardDismiss').addEventListener('click', async () => {
   try { await api('POST', '/api/onboarding/dismiss'); } catch (e) { /* ignore */ }
@@ -814,6 +893,17 @@ async function loadAdmin() {
       api('GET', '/api/admin/payments?status=pending'),
       api('GET', '/api/admin/settings')
     ]);
+    admPlansCache = plans.plans || [];
+    const shopBadge = $('admTabShopsCount');
+    if (shopBadge) {
+      shopBadge.textContent = sum.total_businesses;
+      shopBadge.classList.toggle('hidden', !sum.total_businesses);
+    }
+    const payBadge = $('admTabPayCount');
+    if (payBadge) {
+      payBadge.textContent = sum.pending_claims;
+      payBadge.classList.toggle('hidden', !sum.pending_claims);
+    }
     $('admTotal').textContent = sum.total_businesses;
     const stuckEl = $('admStuck'); if (stuckEl) stuckEl.textContent = sum.onboarding_stuck != null ? sum.onboarding_stuck : '—';
     $('admRevenue').textContent = fmt(sum.revenue_total);
@@ -845,32 +935,35 @@ async function loadAdmin() {
         d.appendChild(s);
         const ok = document.createElement('button');
         ok.className = 'btn btn-blue btn-sm'; ok.style.marginLeft = 'auto'; ok.textContent = 'Approve';
-        ok.addEventListener('click', () => adminAction(() => api('POST', `/api/admin/payments/${p.id}/approve`)));
+        ok.addEventListener('click', () => adminAction(() => api('POST', `/api/admin/payments/${p.id}/approve`), 'Claim approved — subscription badh gaya.'));
         const no = document.createElement('button');
         no.className = 'btn btn-danger btn-sm'; no.style.marginLeft = '6px'; no.textContent = 'Reject';
-        no.addEventListener('click', () => adminAction(() => api('POST', `/api/admin/payments/${p.id}/reject`)));
+        no.addEventListener('click', () => adminAction(() => api('POST', `/api/admin/payments/${p.id}/reject`), 'Claim reject ho gaya.'));
         d.append(ok, no);
         cb.appendChild(d);
       });
     }
-    // plans editor
+    // plans editor (price + duration + grace; PUT /api/admin/plans/:code)
     const pb = $('admPlans');
     pb.innerHTML = '';
     plans.plans.forEach((p) => {
       const f = document.createElement('form');
       f.className = 'row2'; f.style.alignItems = 'end'; f.style.marginBottom = '8px';
+      f.style.gridTemplateColumns = '1.2fr 1fr 1fr auto';
       f.innerHTML =
-        `<div class="field" style="margin:0"><label>${esc(p.name)} (${esc(p.code)}) — price ₹</label><input class="input" type="number" min="0" step="0.01" value="${Number(p.price)}"></div>` +
-        `<div class="field" style="margin:0"><label>Grace days</label><input class="input" type="number" min="0" step="1" value="${Number(p.grace_days)}"></div>`;
+        `<div class="field" style="margin:0"><label>${esc(p.name)} (${esc(p.code)}) — price ₹</label><input class="input adm-pl-price" type="number" min="0" step="0.01" value="${Number(p.price)}"></div>` +
+        `<div class="field" style="margin:0"><label>Duration (days)</label><input class="input adm-pl-dur" type="number" min="1" step="1" value="${Number(p.duration_days)}"></div>` +
+        `<div class="field" style="margin:0"><label>Grace days</label><input class="input adm-pl-grace" type="number" min="0" step="1" value="${Number(p.grace_days)}"></div>`;
       const btn = document.createElement('button');
       btn.className = 'btn btn-blue'; btn.type = 'submit'; btn.textContent = 'Save';
       f.appendChild(btn);
       f.addEventListener('submit', async (e) => {
         e.preventDefault();
         await adminAction(() => api('PUT', '/api/admin/plans/' + p.code, {
-          price: Number(f.children[0].querySelector('input').value) || 0,
-          grace_days: Number(f.children[1].querySelector('input').value) || 0
-        }));
+          price: Number(f.querySelector('.adm-pl-price').value) || 0,
+          duration_days: Number(f.querySelector('.adm-pl-dur').value) || Number(p.duration_days),
+          grace_days: Number(f.querySelector('.adm-pl-grace').value) || 0
+        }), `${p.name} plan save ho gaya.`);
       });
       pb.appendChild(f);
     });
@@ -879,10 +972,93 @@ async function loadAdmin() {
     const tp = $('admTopPlan'); if (tp) tp.value = settings.settings.top_plan_code || '';
   } catch (err) { showErr('adminErr', friendly(err)); }
 }
-async function adminAction(fn) {
+async function adminAction(fn, successMsg) {
   hideErr('adminErr');
-  try { await fn(); loadAdmin(); }
-  catch (err) { showErr('adminErr', friendly(err)); }
+  // Busy state: spinner chip + controls disabled while the action flies.
+  const view = $('view-admin');
+  const busy = $('admBusy');
+  if (view) view.classList.add('adm-busy');
+  if (busy) busy.classList.remove('hidden');
+  try {
+    const r = await fn();
+    await loadAdmin();
+    if (successMsg) admToast(successMsg, true);
+    return r;
+  } catch (err) {
+    admToast(friendly(err), false);
+    showErr('adminErr', friendly(err));
+  } finally {
+    if (view) view.classList.remove('adm-busy');
+    if (busy) busy.classList.add('hidden');
+  }
+}
+// ---------- Admin toast + confirm modal (Admin Panel upgrade) ----------
+let admToastTimer = null;
+function admToast(msg, ok = true) {
+  const t = $('admToast');
+  if (!t) return;
+  t.textContent = msg;
+  t.className = 'adm-toast ' + (ok ? 'ok' : 'err');
+  clearTimeout(admToastTimer);
+  admToastTimer = setTimeout(() => { t.classList.add('hidden'); }, 3600);
+}
+// Promise-based confirm dialog. typeName (a shop's name) turns it into
+// the type-to-confirm variant used for permanent deletes.
+function admConfirm(opts) {
+  const { title, body, okText = 'Confirm', typeName = null } = opts || {};
+  return new Promise((resolve) => {
+    const wrap = $('admModal');
+    if (!wrap) { resolve(window.confirm(title + '\n' + body)); return; }
+    $('admModalTitle').textContent = title;
+    $('admModalBody').textContent = body;
+    const okBtn = $('admModalOk');
+    const cancelBtn = $('admModalCancel');
+    okBtn.textContent = okText;
+    // Danger wording (delete / block / remove) gets the solid-red button;
+    // neutral confirms (e.g. change plan) get the primary indigo button.
+    okBtn.className = /delete|block|remove/i.test(okText) ? 'btn btn-danger-solid' : 'btn btn-blue';
+    const typeWrap = $('admModalTypeWrap');
+    const typeInput = $('admModalTypeInput');
+    if (typeName) {
+      typeWrap.classList.remove('hidden');
+      $('admModalTypeLabel').textContent = `Pakka karne ke liye dukaan ka naam likho: ${typeName}`;
+      typeInput.value = '';
+      okBtn.disabled = true;
+    } else {
+      typeWrap.classList.add('hidden');
+      okBtn.disabled = false;
+    }
+    wrap.classList.remove('hidden');
+    if (typeName) typeInput.focus();
+    const cleanup = () => {
+      wrap.classList.add('hidden');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      wrap.removeEventListener('click', onBackdrop);
+      typeInput.removeEventListener('input', onType);
+    };
+    const onOk = () => { cleanup(); resolve(true); };
+    const onCancel = () => { cleanup(); resolve(false); };
+    const onBackdrop = (e) => { if (e.target === wrap) onCancel(); };
+    const onType = () => { okBtn.disabled = typeInput.value.trim() !== typeName; };
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    wrap.addEventListener('click', onBackdrop);
+    if (typeName) typeInput.addEventListener('input', onType);
+  });
+}
+// ---------- Admin section tabs ----------
+document.querySelectorAll('#admTabs .adm-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('#admTabs .adm-tab').forEach((t) => t.classList.toggle('on', t === tab));
+    document.querySelectorAll('#view-admin .adm-pane').forEach((p) => {
+      p.classList.toggle('hidden', p.dataset.apane !== tab.dataset.atab);
+    });
+  });
+});
+function admShowTab(name) {
+  const tab = document.querySelector(`#admTabs .adm-tab[data-atab="${name}"]`);
+  if (tab) tab.click();
 }
 // ---------- Admin overview sections (growth + attention) ----------
 function admRow(text) {
@@ -923,16 +1099,18 @@ function renderAdmTrend(trend) {
   bars.className = 'trend';
   const labels = document.createElement('div');
   labels.className = 'trend-labels';
-  trend.forEach((t) => {
+  trend.forEach((t, i) => {
+    const isToday = i === trend.length - 1;
     const col = document.createElement('div');
     col.className = 'trend-col';
     const cnt = document.createElement('div');
-    cnt.className = 'trend-count';
+    cnt.className = 'trend-count' + (isToday ? ' today' : '');
     cnt.textContent = t.count ? String(t.count) : '';
     const bar = document.createElement('div');
-    bar.className = 'trend-bar';
+    bar.className = 'trend-bar' + (isToday ? ' today' : '');
     bar.style.height = Math.max(4, Math.round(((Number(t.count) || 0) / max) * 100)) + '%';
-    bar.title = `${t.date}: ${t.count} signup(s)`;
+    if (!Number(t.count)) bar.style.opacity = '.3';
+    bar.title = `${t.date}: ${t.count} signup(s)` + (isToday ? ' (aaj)' : '');
     col.append(cnt, bar);
     bars.appendChild(col);
     const lb = document.createElement('div');
@@ -942,6 +1120,11 @@ function renderAdmTrend(trend) {
     labels.appendChild(lb);
   });
   el.append(bars, labels);
+}
+function admStatusTextBadge(st) {
+  const map = { trial: 'tag-trial', active: 'tag-active', grace: 'tag-grace', expired: 'tag-expired', blocked: 'tag-blocked' };
+  const cls = map[String(st || '').toLowerCase()] || 'tag-plan';
+  return `<span class="tag ${cls}">${esc(st || '—')}</span>`;
 }
 function renderAdmRecent(list) {
   const tb = $('admRecentRows');
@@ -965,7 +1148,12 @@ function renderAdmRecent(list) {
       b.status,
       `${ob.done}/${ob.total} steps · ${ob.pct}%`
     ];
-    cells.forEach((c) => { const td = document.createElement('td'); td.textContent = c; tr.appendChild(td); });
+    cells.forEach((c, ci) => {
+      const td = document.createElement('td');
+      if (ci === 3) td.innerHTML = admStatusTextBadge(c);
+      else td.textContent = c;
+      tr.appendChild(td);
+    });
     tb.appendChild(tr);
   });
 }
@@ -982,29 +1170,63 @@ function renderAdmClaimsHistory(list) {
     (p.reference ? ` · ref ${p.reference}` : '')
   )));
 }
-// ---------- Shop detail panel (metadata only) ----------
+// ---------- Shop detail panel (metadata + account control) ----------
 let admDetailFor = null;
+let admPlansCache = [];
 async function openAdmDetail(id) {
   const box = $('admDetail');
   if (!box) return;
+  admShowTab('shops');
+  const wasHidden = box.classList.contains('hidden');
   box.classList.remove('hidden');
-  box.innerHTML = '<div class="hint">Loading…</div>';
+  const ov = $('admDrawerOverlay');
+  if (ov) ov.classList.remove('hidden');
+  box.innerHTML = '<div class="adm-loading"><span class="adm-spinner dark"></span> Loading…</div>';
   try {
-    const d = await api('GET', `/api/admin/businesses/${id}/detail`);
+    const [d, u] = await Promise.all([
+      api('GET', `/api/admin/businesses/${id}/detail`),
+      api('GET', `/api/admin/businesses/${id}/users`).catch(() => null)
+    ]);
     admDetailFor = id;
-    renderAdmDetail(d);
-    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    renderAdmDetail(d, u ? u.users : null);
+    // Slide-in animation only on a fresh open, not on action refreshes.
+    if (wasHidden) {
+      box.classList.remove('anim-in');
+      void box.offsetWidth;
+      box.classList.add('anim-in');
+    }
   } catch (err) {
     showErr('adminErr', friendly(err));
     box.classList.add('hidden');
+    if (ov) ov.classList.add('hidden');
   }
 }
 function closeAdmDetail() {
   admDetailFor = null;
   const box = $('admDetail');
   if (box) { box.classList.add('hidden'); box.innerHTML = ''; }
+  const ov = $('admDrawerOverlay');
+  if (ov) ov.classList.add('hidden');
 }
-function renderAdmDetail(d) {
+const admOverlayEl = $('admDrawerOverlay');
+if (admOverlayEl) admOverlayEl.addEventListener('click', closeAdmDetail);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && admDetailFor) closeAdmDetail();
+});
+function admStatusBadge(s) {
+  if (!s) return '<span class="tag tag-plan">—</span>';
+  if (s.blocked || s.status === 'blocked') return '<span class="tag tag-blocked">Blocked</span>';
+  if (s.status === 'trial') return `<span class="tag tag-trial">Trial · ${Math.max(0, s.days_left)}d left</span>`;
+  if (s.status === 'active') return `<span class="tag tag-active">Active${s.days_left <= 30 ? ` · ${Math.max(0, s.days_left)}d left` : ''}</span>`;
+  if (s.status === 'grace') return `<span class="tag tag-grace">Grace · ${Math.max(0, s.days_left)}d</span>`;
+  if (s.status === 'expired') return '<span class="tag tag-expired">Expired</span>';
+  return `<span class="tag tag-plan">${esc(s.status)}</span>`;
+}
+function admPlanBadge(code) {
+  const p = admPlansCache.find((x) => x.code === code);
+  return `<span class="tag tag-plan">${esc(code ? (p ? p.name : code) : 'Free trial')}</span>`;
+}
+function renderAdmDetail(d, users) {
   const box = $('admDetail');
   if (!box) return;
   const b = d.business, s = d.subscription;
@@ -1022,12 +1244,71 @@ function renderAdmDetail(d) {
   const meta = document.createElement('div');
   meta.className = 'hint'; meta.style.marginTop = '6px';
   meta.textContent = `#${b.id} · ${b.owner_name || ''} · ${b.owner_email || ''} · ${b.phone || ''} · ${b.city || ''} · joined ${fmtDateOnly(b.created_at)}`;
-  const sub = document.createElement('div');
-  sub.style.marginTop = '6px'; sub.style.fontSize = '13.5px';
-  sub.textContent = `Status: ${s.status}${s.read_only ? ' (read-only)' : ''} · Plan: ${s.plan_code || 'trial'} · Ends: ${fmtDateOnly(s.ends_at)} · Onboarding: ${ob.done}/${ob.total} steps (${ob.pct}%)`;
-  box.append(head, meta, sub);
+  const subLine = document.createElement('div');
+  subLine.style.marginTop = '8px'; subLine.style.fontSize = '13.5px';
+  subLine.innerHTML = `Status: ${admStatusBadge(s)} &nbsp;Plan: ${admPlanBadge(s.plan_code)} &nbsp;Ends: <b>${fmtDateOnly(s.ends_at)}</b> &nbsp;·&nbsp; Onboarding: ${ob.done}/${ob.total} steps (${ob.pct}%)`;
+  box.append(head, meta, subLine);
+
+  // ---- Subscription controls: change plan + extend ----
+  const hCtl = document.createElement('h4');
+  hCtl.textContent = 'Subscription controls'; hCtl.style.margin = '14px 0 6px';
+  box.appendChild(hCtl);
+  const ctl = document.createElement('div');
+  ctl.style.display = 'flex'; ctl.style.gap = '8px'; ctl.style.flexWrap = 'wrap'; ctl.style.alignItems = 'end';
+  const planField = document.createElement('div');
+  planField.className = 'field'; planField.style.margin = '0';
+  const planLbl = document.createElement('label');
+  planLbl.textContent = 'Change plan';
+  const planSel = document.createElement('select');
+  planSel.className = 'input adm-inline-sel'; planSel.style.display = 'block'; planSel.style.padding = '9px 10px';
+  admPlansCache.forEach((p) => {
+    const o = document.createElement('option');
+    o.value = p.code; o.textContent = `${p.name} (${p.duration_days} days)`;
+    if (s.plan_code === p.code) o.selected = true;
+    planSel.appendChild(o);
+  });
+  planField.append(planLbl, planSel);
+  const setPlanBtn = document.createElement('button');
+  setPlanBtn.className = 'btn btn-blue btn-sm'; setPlanBtn.textContent = 'Set plan';
+  setPlanBtn.addEventListener('click', async () => {
+    const code = planSel.value;
+    const plan = admPlansCache.find((x) => x.code === code);
+    const yes = await admConfirm({
+      title: 'Change plan?',
+      body: `${b.name || '(no name set)'} ka plan abhi "${plan ? plan.name : code}" ho jayega — naya period aaj se ${plan ? plan.duration_days : ''} din ka chalega aur block (agar hai) hat jayega.`,
+      okText: 'Change plan'
+    });
+    if (!yes) return;
+    await adminAction(() => api('POST', `/api/admin/businesses/${b.id}/plan`, { plan_code: code }), 'Plan badal gaya.');
+  });
+  const ext7 = document.createElement('button');
+  ext7.className = 'btn btn-extend btn-sm'; ext7.textContent = 'Extend +7 days';
+  ext7.addEventListener('click', () => adminAction(
+    () => api('POST', `/api/admin/businesses/${b.id}/extend`, { days: 7 }), '7 din badha diye.'));
+  const ext30 = document.createElement('button');
+  ext30.className = 'btn btn-extend btn-sm'; ext30.textContent = 'Extend +30 days';
+  ext30.addEventListener('click', () => adminAction(
+    () => api('POST', `/api/admin/businesses/${b.id}/extend`, { days: 30 }), '30 din badha diye.'));
+  const blockBtn = document.createElement('button');
+  blockBtn.className = s.blocked ? 'btn btn-ghost btn-sm' : 'btn btn-amber btn-sm';
+  blockBtn.textContent = s.blocked ? 'Unblock shop' : 'Block shop';
+  blockBtn.addEventListener('click', async () => {
+    if (!s.blocked) {
+      const yes = await admConfirm({
+        title: 'Block this shop?',
+        body: `"${b.name || '(no name set)'}" block ho jayegi — shop read-only ho jayegi, naya kaam nahi ho payega. Unblock kabhi bhi kar sakte ho.`,
+        okText: 'Block shop'
+      });
+      if (!yes) return;
+    }
+    await adminAction(() => api('POST', `/api/admin/businesses/${b.id}/block`, { blocked: !s.blocked }),
+      s.blocked ? 'Shop unblock ho gayi.' : 'Shop block ho gayi.');
+  });
+  ctl.append(planField, setPlanBtn, ext7, ext30, blockBtn);
+  box.appendChild(ctl);
+
   const h1 = document.createElement('h4');
-  h1.textContent = 'Subscription'; h1.style.margin = '14px 0 4px';
+  h1.textContent = 'Subscription record'; h1.style.margin = '14px 0 4px';
   box.appendChild(h1);
   const rows = d.subscription_rows || [];
   if (!rows.length) box.appendChild(admRow('No subscription record.'));
@@ -1044,54 +1325,244 @@ function renderAdmDetail(d) {
     (p.invoice_no ? ` · ${p.invoice_no}` : '') +
     (p.reference ? ` · ref ${p.reference}` : '')
   )));
+
+  // ---- Users of this shop: role / access / block / remove ----
+  const h3 = document.createElement('h4');
+  h3.textContent = 'Users (logins of this shop)'; h3.style.margin = '16px 0 4px';
+  box.appendChild(h3);
+  if (!users) {
+    box.appendChild(admRow('Users load nahi ho paye — dobara View dabao.'));
+  } else if (!users.length) {
+    box.appendChild(admRow('No users.'));
+  } else {
+    users.forEach((u) => box.appendChild(admUserRow(b, u)));
+  }
 }
-// Updates Stage D: shops table renderer with name/email search filter.
+function admUserRow(b, u) {
+  const row = document.createElement('div');
+  row.className = 'adm-user-row';
+  const main = document.createElement('div');
+  main.className = 'u-main';
+  const nm = document.createElement('b');
+  nm.textContent = u.name;
+  const em = document.createElement('span');
+  em.textContent = `${u.email} · joined ${fmtDateOnly(u.created_at)}`;
+  main.append(nm, em);
+  row.appendChild(main);
+  const status = document.createElement('span');
+  if (u.blocked) { status.className = 'tag tag-useroff'; status.textContent = 'Blocked'; }
+  else { status.className = 'tag tag-active'; status.textContent = 'Active'; }
+  row.appendChild(status);
+  const roleSel = document.createElement('select');
+  roleSel.className = 'input adm-inline-sel'; roleSel.title = 'Role';
+  [['owner', 'Owner'], ['staff', 'Staff']].forEach(([v, lbl]) => {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = lbl; if (u.role === v) o.selected = true;
+    roleSel.appendChild(o);
+  });
+  const accSel = document.createElement('select');
+  accSel.className = 'input adm-inline-sel'; accSel.title = 'Access';
+  [['all', 'Access: All'], ['billing', 'Access: Billing'], ['stock', 'Access: Stock']].forEach(([v, lbl]) => {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = lbl; if (u.access === v) o.selected = true;
+    accSel.appendChild(o);
+  });
+  if (u.role === 'owner') accSel.disabled = true; // owners always have full access
+  const applyRole = async () => {
+    if (roleSel.value === u.role && accSel.value === u.access) return;
+    await adminAction(() => api('PUT', `/api/admin/users/${u.id}/role`, {
+      role: roleSel.value, access: accSel.value
+    }), `${u.name} ka role/access badal gaya.`);
+  };
+  roleSel.addEventListener('change', applyRole);
+  accSel.addEventListener('change', applyRole);
+  row.append(roleSel, accSel);
+  const blk = document.createElement('button');
+  blk.className = u.blocked ? 'btn btn-ghost btn-sm' : 'btn btn-amber btn-sm';
+  blk.textContent = u.blocked ? 'Unblock user' : 'Block user';
+  blk.addEventListener('click', async () => {
+    if (!u.blocked) {
+      const yes = await admConfirm({
+        title: 'Block this user?',
+        body: `${u.name} (${u.email}) ab login nahi kar payega — uska chalta session bhi band ho jayega. Unblock kabhi bhi kar sakte ho.`,
+        okText: 'Block user'
+      });
+      if (!yes) return;
+    }
+    await adminAction(() => api('POST', `/api/admin/users/${u.id}/block`, { blocked: !u.blocked }),
+      u.blocked ? `${u.name} unblock ho gaya.` : `${u.name} block ho gaya.`);
+  });
+  row.appendChild(blk);
+  const rm = document.createElement('button');
+  rm.className = 'btn btn-danger-solid btn-sm'; rm.textContent = 'Remove';
+  rm.addEventListener('click', async () => {
+    const yes = await admConfirm({
+      title: 'Remove this user?',
+      body: `${u.name} (${u.email}) ko "${b.name || '(no name set)'}" se hamesha ke liye hata diya jayega — ye login phir kaam nahi karega. Dukaan ka data (bills, stock) waisa hi rahega.`,
+      okText: 'Remove user'
+    });
+    if (!yes) return;
+    await adminAction(() => api('DELETE', `/api/admin/users/${u.id}`), `${u.name} hata diya gaya.`);
+  });
+  row.appendChild(rm);
+  return row;
+}
+// Shops list: search (name/owner/email/city) + status filter chips.
+// Soft avatar colour pairs (bg / fg), picked deterministically by shop id.
+const ADM_AVATAR_PALETTES = [
+  { bg: '#E8ECFA', fg: '#2B3A8F' }, { bg: '#E0F2F1', fg: '#0F766E' },
+  { bg: '#FEF3DC', fg: '#B45309' }, { bg: '#FCE7F3', fg: '#BE185D' },
+  { bg: '#E7F6EC', fg: '#15803D' }, { bg: '#F1EAFE', fg: '#7C3AED' }
+];
 let admBizCache = [];
+let admFilter = 'all';
+function admBizMatches(b) {
+  const s = b.subscription || {};
+  if (admFilter === 'trial') return s.status === 'trial';
+  if (admFilter === 'paid') return s.status === 'active' || s.status === 'grace';
+  if (admFilter === 'expiring') return ['trial', 'active', 'grace'].includes(s.status) && s.days_left >= 0 && s.days_left <= 3;
+  if (admFilter === 'expired') return s.status === 'expired';
+  if (admFilter === 'blocked') return s.status === 'blocked' || !!s.blocked;
+  return true;
+}
 function renderAdmBiz() {
   const tb = $('admBizRows');
   if (!tb) return;
   const q = ($('admSearch') ? $('admSearch').value : '').trim().toLowerCase();
   tb.innerHTML = '';
-  const list = admBizCache.filter((b) => !q
+  const list = admBizCache.filter((b) => admBizMatches(b) && (!q
     || String(b.name || '').toLowerCase().includes(q)
     || String(b.owner_email || '').toLowerCase().includes(q)
-    || String(b.owner_name || '').toLowerCase().includes(q));
+    || String(b.owner_name || '').toLowerCase().includes(q)
+    || String(b.city || '').toLowerCase().includes(q)));
   if (!list.length) {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = 7; td.className = 'hint'; td.textContent = 'No shops match.';
-    tr.appendChild(td); tb.appendChild(tr);
+    const d = document.createElement('div');
+    d.className = 'adm-empty-box';
+    d.textContent = 'No shops match this search/filter.';
+    tb.appendChild(d);
     return;
   }
   list.forEach((b) => {
     const s = b.subscription;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td><b></b><br><span class="hint"></span></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
-    tr.children[0].querySelector('b').textContent = b.name || '(no name set)';
-    tr.children[0].querySelector('span').textContent = `#${b.id} · ${b.city || ''}`;
-    tr.children[1].textContent = `${b.owner_name || ''} · ${b.owner_email || ''}`;
-    tr.children[2].textContent = s.status + (s.read_only ? ' (read-only)' : '');
-    tr.children[3].textContent = s.plan_code || 'trial';
-    tr.children[4].textContent = fmtDateOnly(s.ends_at);
+    const card = document.createElement('div');
+    card.className = 'adm-shop-card';
+    // Top row: coloured initial avatar + name/meta + plan/status badges.
+    const top = document.createElement('div');
+    top.className = 'adm-shop-top';
+    const av = document.createElement('div');
+    av.className = 'adm-avatar';
+    const pal = ADM_AVATAR_PALETTES[Math.abs(Number(b.id) || 0) % ADM_AVATAR_PALETTES.length];
+    av.style.background = pal.bg; av.style.color = pal.fg;
+    av.textContent = (String(b.name || '?').trim().charAt(0) || '?').toUpperCase();
+    const main = document.createElement('div');
+    main.className = 'adm-shop-main';
+    const nm = document.createElement('b');
+    nm.textContent = b.name || '(no name set)';
+    const meta = document.createElement('span');
+    meta.className = 'hint';
+    meta.textContent = `#${b.id} · ${b.city || ''} · joined ${fmtDateOnly(b.created_at)} · ${b.owner_name || ''} · ${b.owner_email || ''}`;
+    main.append(nm, meta);
+    const badges = document.createElement('div');
+    badges.className = 'adm-shop-badges';
+    badges.innerHTML = admPlanBadge(s.plan_code) + ' ' + admStatusBadge(s);
+    top.append(av, main, badges);
+    card.appendChild(top);
+    // Progress row: onboarding bar + subscription end date.
     const ob = b.onboarding || { done: 0, total: 8, pct: 0 };
-    tr.children[5].textContent = `${ob.done}/${ob.total} steps · ${ob.pct}%`;
-    tr.children[5].style.color = ob.pct >= 100 ? 'var(--green)' : (ob.pct >= 50 ? 'inherit' : 'var(--amber)');
-    const act = tr.children[6];
-    const mkBtn = (txt, fn) => {
+    const prog = document.createElement('div');
+    prog.className = 'adm-shop-prog';
+    const obTxt = document.createElement('span');
+    obTxt.textContent = `Onboarding ${ob.done}/${ob.total} steps · ${ob.pct}%`;
+    obTxt.style.fontWeight = '600';
+    obTxt.style.color = ob.pct >= 100 ? 'var(--green)' : (ob.pct >= 50 ? 'var(--ink)' : 'var(--amber)');
+    const obBar = document.createElement('div');
+    obBar.className = 'ob-bar mini';
+    const obFill = document.createElement('div');
+    obFill.className = 'ob-bar-fill';
+    obFill.style.width = `${ob.pct}%`;
+    obBar.appendChild(obFill);
+    const ends = document.createElement('span');
+    ends.innerHTML = `Ends: <b style="color:var(--ink)"></b>`;
+    ends.querySelector('b').textContent = fmtDateOnly(s.ends_at);
+    prog.append(obTxt, obBar, ends);
+    card.appendChild(prog);
+    const wrap = document.createElement('div');
+    wrap.className = 'adm-actions';
+    card.appendChild(wrap);
+    const mkBtn = (txt, cls, fn) => {
       const btn = document.createElement('button');
-      btn.className = 'btn btn-soft btn-sm'; btn.style.margin = '0 4px 4px 0'; btn.textContent = txt;
+      btn.className = cls; btn.textContent = txt;
       btn.addEventListener('click', fn);
-      act.appendChild(btn);
+      wrap.appendChild(btn);
+      return btn;
     };
-    mkBtn('View', () => openAdmDetail(b.id));
-    mkBtn('+ Monthly', async () => { await adminAction(() => api('POST', `/api/admin/businesses/${b.id}/extend`, { plan_code: 'monthly' })); });
-    mkBtn('+ Yearly', async () => { await adminAction(() => api('POST', `/api/admin/businesses/${b.id}/extend`, { plan_code: 'yearly' })); });
-    mkBtn(s.blocked ? 'Unblock' : 'Block', async () => { await adminAction(() => api('POST', `/api/admin/businesses/${b.id}/block`, { blocked: !s.blocked })); });
-    tb.appendChild(tr);
+    mkBtn('View', 'btn btn-soft btn-sm', () => openAdmDetail(b.id));
+    mkBtn('Extend 30d', 'btn btn-extend btn-sm', () => adminAction(
+      () => api('POST', `/api/admin/businesses/${b.id}/extend`, { plan_code: 'monthly' }), 'Monthly period badha diya.'));
+    mkBtn('Extend 1yr', 'btn btn-extend btn-sm', () => adminAction(
+      () => api('POST', `/api/admin/businesses/${b.id}/extend`, { plan_code: 'yearly' }), 'Yearly period badha diya.'));
+    // Change plan: compact select; choosing a plan asks for confirmation.
+    const planSel = document.createElement('select');
+    planSel.className = 'input adm-inline-sel';
+    planSel.title = 'Change plan';
+    const cur = document.createElement('option');
+    cur.value = ''; cur.textContent = 'Change plan…';
+    planSel.appendChild(cur);
+    admPlansCache.forEach((p) => {
+      const o = document.createElement('option');
+      o.value = p.code; o.textContent = p.name;
+      planSel.appendChild(o);
+    });
+    planSel.addEventListener('change', async () => {
+      const code = planSel.value;
+      planSel.value = '';
+      if (!code || code === (s.plan_code || '')) return;
+      const plan = admPlansCache.find((x) => x.code === code);
+      const yes = await admConfirm({
+        title: 'Change plan?',
+        body: `${b.name || '(no name set)'} ka plan "${plan ? plan.name : code}" ho jayega — naya period aaj se ${plan ? plan.duration_days : ''} din chalega, block (agar hai) hat jayega.`,
+        okText: 'Change plan'
+      });
+      if (!yes) return;
+      await adminAction(() => api('POST', `/api/admin/businesses/${b.id}/plan`, { plan_code: code }), 'Plan badal gaya.');
+    });
+    wrap.appendChild(planSel);
+    mkBtn(s.blocked ? 'Unblock' : 'Block', s.blocked ? 'btn btn-ghost btn-sm' : 'btn btn-amber btn-sm', async () => {
+      if (!s.blocked) {
+        const yes = await admConfirm({
+          title: 'Block this shop?',
+          body: `"${b.name || '(no name set)'}" block ho jayegi — shop read-only ho jayegi, naya kaam nahi ho payega. Unblock kabhi bhi kar sakte ho.`,
+          okText: 'Block shop'
+        });
+        if (!yes) return;
+      }
+      await adminAction(() => api('POST', `/api/admin/businesses/${b.id}/block`, { blocked: !s.blocked }),
+        s.blocked ? 'Shop unblock ho gayi.' : 'Shop block ho gayi.');
+    });
+    mkBtn('Delete', 'btn btn-danger-solid btn-sm', async () => {
+      const shopName = b.name || '';
+      const yes = await admConfirm({
+        title: 'Delete this shop forever?',
+        body: `"${shopName || '(no name set)'}" aur uska SARA data — users, products, bills, stock, sab kuch — hamesha ke liye delete ho jayega. Ye wapas nahi aayega.`,
+        okText: 'Delete forever',
+        typeName: shopName || String(b.id)
+      });
+      if (!yes) return;
+      if (admDetailFor === b.id) closeAdmDetail();
+      await adminAction(() => api('DELETE', `/api/admin/businesses/${b.id}`), 'Shop delete ho gayi.');
+    });
+    tb.appendChild(card);
   });
 }
 const admSearchEl = $('admSearch');
 if (admSearchEl) admSearchEl.addEventListener('input', renderAdmBiz);
+document.querySelectorAll('#admChips button').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    admFilter = chip.dataset.afilter || 'all';
+    document.querySelectorAll('#admChips button').forEach((c) => c.classList.toggle('on', c === chip));
+    renderAdmBiz();
+  });
+});
 $('admSettingsForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   await adminAction(() => api('PUT', '/api/admin/settings', { support_whatsapp: $('admSupportWa').value.trim(), help_video_url: ($('admHelpVideo') ? $('admHelpVideo').value.trim() : ''), top_plan_code: ($('admTopPlan') ? $('admTopPlan').value.trim() : '') }));
@@ -1118,7 +1589,7 @@ $('backupBtn').addEventListener('click', async () => {
     return;
   }
   hideConnBanner();
-  if (!res.ok) { showErr('backupErr', isHi() ? 'बैकअप नहीं बन पाया। दोबारा कोशिश करें।' : 'Could not create the backup. Please try again.'); return; }
+  if (!res.ok) { showErr('backupErr', tr("Could not create the backup. Please try again.", "बैकअप नहीं बन पाया। दोबारा कोशिश करें।")); return; }
   try {
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -1129,7 +1600,7 @@ $('backupBtn').addEventListener('click', async () => {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-  } catch (e) { showErr('backupErr', isHi() ? 'बैकअप डाउनलोड नहीं हुआ। दोबारा कोशिश करें।' : 'Backup download failed. Please try again.'); }
+  } catch (e) { showErr('backupErr', tr("Backup download failed. Please try again.", "बैकअप डाउनलोड नहीं हुआ। दोबारा कोशिश करें।")); }
 });
 
 // =====================================================================
@@ -1141,18 +1612,19 @@ function fmtQty(n) { return Number(n || 0).toLocaleString('en-IN', { maximumFrac
 function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 function stage2Friendly(err) {
   const map = {
-    'stock_access_only': 'Your login has Billing access only — stock work is not allowed. / तुम्हारे login को सिर्फ़ Billing access है — stock का काम नहीं मिलेगा।',
-    'supplier_has_purchases': 'This supplier has purchases, so it cannot be deleted. / इस सप्लायर की खरीद दर्ज है, इसलिए delete नहीं होगा।',
-    'product_used_in_purchases': 'This product is used in purchases, so it cannot be deleted. / ये सामान खरीद में इस्तेमाल हुआ है, इसलिए delete नहीं होगा।',
-    'payment is more than the pending amount': 'Payment is more than the pending amount. / पेमेंट बाकी रकम से ज़्यादा है।'
+    'stock_access_only': ['Your login has Billing access only — stock work is not allowed.', 'आपके login को सिर्फ़ Billing access है — stock का काम नहीं मिलेगा।', 'Aapke login ko sirf Billing access hai — stock ka kaam nahi milega.'],
+    'supplier_has_purchases': ['This supplier has purchases, so it cannot be deleted.', 'इस सप्लायर की खरीद दर्ज है, इसलिए delete नहीं होगा।', 'Is supplier ki khareed darj hai, isliye delete nahi hoga.'],
+    'product_used_in_purchases': ['This product is used in purchases, so it cannot be deleted.', 'ये सामान खरीद में इस्तेमाल हुआ है, इसलिए delete नहीं होगा।', 'Ye saamaan khareed me use hua hai, isliye delete nahi hoga.'],
+    'payment is more than the pending amount': ['Payment is more than the pending amount.', 'पेमेंट बाकी रकम से ज़्यादा है।', 'Payment baaki rakam se zyada hai.']
   };
-  return map[err.message] || friendly(err);
+  const m = map[err.message];
+  return m ? tr(m[0], m[1], m[2]) : friendly(err);
 }
 function statusTag(st) {
   if (st === 'ok' || st === 'paid') return `<span class="tag tag-paid">${st === 'ok' ? 'OK' : 'Paid'}</span>`;
-  if (st === 'low') return `<span class="tag tag-part">${isHi() ? 'स्टॉक कम' : 'Low stock'}</span>`;
+  if (st === 'low') return `<span class="tag tag-part">${tr("Low stock", "स्टॉक कम")}</span>`;
   if (st === 'partial') return `<span class="tag tag-part">Partial</span>`;
-  if (st === 'out') return `<span class="tag tag-pend">${isHi() ? 'ख़त्म' : 'Out of stock'}</span>`;
+  if (st === 'out') return `<span class="tag tag-pend">${tr("Out of stock", "ख़त्म")}</span>`;
   return `<span class="tag tag-pend">Pending</span>`;
 }
 
@@ -1178,14 +1650,14 @@ async function loadDashboardStock() {
     const box = $('dashLowStock');
     box.innerHTML = '';
     if (!low.products.length) {
-      box.innerHTML = `<div class="offline-note" style="margin-top:0">🟢 ${isHi() ? 'सब स्टॉक ठीक है — कोई सामान कम नहीं है।' : 'All stock is fine — nothing is running low.'}</div>`;
+      box.innerHTML = `<div class="offline-note" style="margin-top:0">🟢 ${tr("All stock is fine — nothing is running low.", "सब स्टॉक ठीक है — कोई सामान कम नहीं है।")}</div>`;
     } else {
       low.products.forEach((p) => {
         const row = document.createElement('div');
         row.className = 'alert-row';
         row.innerHTML = `<span></span><span class="qty ${p.status === 'low' ? 'amber' : ''}"></span>`;
         row.children[0].textContent = p.name;
-        row.children[1].textContent = fmtQty(p.stock_qty) + ' ' + p.unit + (isHi() ? ' बचे' : ' left');
+        row.children[1].textContent = fmtQty(p.stock_qty) + ' ' + p.unit + (tr(" left", " बचे"));
         box.appendChild(row);
       });
     }
@@ -1223,29 +1695,29 @@ function renderProducts(list) {
   tb.innerHTML = '';
   $('prodEmpty').classList.toggle('hidden', list.length > 0);
   list.forEach((p) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td><b></b></td><td></td><td></td><td>${fmt(p.buy_price)}</td><td>${fmt(p.sell_price)}</td><td>${Number(p.gst_rate)}%</td><td>${statusTag(p.status)}</td><td style="white-space:nowrap"></td>`;
-    tr.children[0].querySelector('b').textContent = p.name;
-    tr.children[1].textContent = p.category || '—';
-    tr.children[2].textContent = fmtQty(p.stock_qty) + ' ' + p.unit;
+    const row = document.createElement('tr');
+    row.innerHTML = `<td><b></b></td><td></td><td></td><td>${fmt(p.buy_price)}</td><td>${fmt(p.sell_price)}</td><td>${Number(p.gst_rate)}%</td><td>${statusTag(p.status)}</td><td style="white-space:nowrap"></td>`;
+    row.children[0].querySelector('b').textContent = p.name;
+    row.children[1].textContent = p.category || '—';
+    row.children[2].textContent = fmtQty(p.stock_qty) + ' ' + p.unit;
     const edit = document.createElement('button');
-    edit.className = 'btn btn-ghost btn-sm'; edit.textContent = isHi() ? 'बदलो' : 'Edit';
+    edit.className = 'btn btn-ghost btn-sm'; edit.textContent = tr("Edit", "बदलो");
     edit.addEventListener('click', () => openProductForm(p));
     const del = document.createElement('button');
-    del.className = 'btn btn-danger btn-sm'; del.textContent = isHi() ? 'हटाओ' : 'Delete';
+    del.className = 'btn btn-danger btn-sm'; del.textContent = tr("Delete", "हटाओ");
     del.addEventListener('click', async () => {
-      if (!confirm((isHi() ? 'हटाना है: ' : 'Delete ') + p.name + '?')) return;
+      if (!confirm((tr("Delete ", "हटाना है: ")) + p.name + '?')) return;
       try { await api('DELETE', '/api/products/' + p.id); loadProducts(); } catch (err) { showErr('prodErr', stage2Friendly(err)); }
     });
-    tr.children[7].append(edit, del);
-    tb.appendChild(tr);
+    row.children[7].append(edit, del);
+    tb.appendChild(row);
   });
 }
 function openProductForm(p) {
   hideErr('pfErr');
   $('productFormCard').classList.remove('hidden');
   $('pfId').value = p ? p.id : '';
-  $('pfTitle').textContent = p ? (isHi() ? 'सामान बदलो' : 'Edit product') : (isHi() ? 'सामान जोड़ो' : 'Add product');
+  $('pfTitle').textContent = p ? (tr("Edit product", "सामान बदलो")) : (tr("Add product", "सामान जोड़ो"));
   $('pfName').value = p ? p.name : '';
   $('pfCategory').value = p ? p.category : '';
   $('pfUnit').value = p ? p.unit : 'piece';
@@ -1288,22 +1760,22 @@ async function loadSuppliers() {
     tb.innerHTML = '';
     $('supEmpty').classList.toggle('hidden', r.suppliers.length > 0);
     r.suppliers.forEach((s) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td><b></b></td><td></td><td></td><td>${fmt(s.total_purchased)}</td><td>${fmt(s.total_paid)}</td><td>${s.pending > 0 ? `<span class="pend-amt">${fmt(s.pending)}</span>` : fmt(0)}</td><td style="white-space:nowrap"></td>`;
-      tr.children[0].querySelector('b').textContent = s.name;
-      tr.children[1].textContent = s.phone || '—';
-      tr.children[2].textContent = s.city || '—';
+      const row = document.createElement('tr');
+      row.innerHTML = `<td><b></b></td><td></td><td></td><td>${fmt(s.total_purchased)}</td><td>${fmt(s.total_paid)}</td><td>${s.pending > 0 ? `<span class="pend-amt">${fmt(s.pending)}</span>` : fmt(0)}</td><td style="white-space:nowrap"></td>`;
+      row.children[0].querySelector('b').textContent = s.name;
+      row.children[1].textContent = s.phone || '—';
+      row.children[2].textContent = s.city || '—';
       const edit = document.createElement('button');
-      edit.className = 'btn btn-ghost btn-sm'; edit.textContent = isHi() ? 'बदलो' : 'Edit';
+      edit.className = 'btn btn-ghost btn-sm'; edit.textContent = tr("Edit", "बदलो");
       edit.addEventListener('click', () => openSupplierForm(s));
       const del = document.createElement('button');
-      del.className = 'btn btn-danger btn-sm'; del.textContent = isHi() ? 'हटाओ' : 'Delete';
+      del.className = 'btn btn-danger btn-sm'; del.textContent = tr("Delete", "हटाओ");
       del.addEventListener('click', async () => {
-        if (!confirm((isHi() ? 'हटाना है: ' : 'Delete ') + s.name + '?')) return;
+        if (!confirm((tr("Delete ", "हटाना है: ")) + s.name + '?')) return;
         try { await api('DELETE', '/api/suppliers/' + s.id); loadSuppliers(); } catch (err) { showErr('supErr', stage2Friendly(err)); }
       });
-      tr.children[6].append(edit, del);
-      tb.appendChild(tr);
+      row.children[6].append(edit, del);
+      tb.appendChild(row);
     });
   } catch (e) { showErr('supErr', stage2Friendly(e)); }
 }
@@ -1311,7 +1783,7 @@ function openSupplierForm(s) {
   hideErr('sfErr');
   $('supplierFormCard').classList.remove('hidden');
   $('sfId').value = s ? s.id : '';
-  $('sfTitle').textContent = s ? (isHi() ? 'सप्लायर बदलो' : 'Edit supplier') : (isHi() ? 'सप्लायर जोड़ो' : 'Add supplier');
+  $('sfTitle').textContent = s ? (tr("Edit supplier", "सप्लायर बदलो")) : (tr("Add supplier", "सप्लायर जोड़ो"));
   $('sfName').value = s ? s.name : '';
   $('sfPhone').value = s ? s.phone : '';
   $('sfCity').value = s ? s.city : '';
@@ -1340,14 +1812,14 @@ async function loadPurchases() {
     tb.innerHTML = '';
     $('purEmpty').classList.toggle('hidden', pr.purchases.length > 0);
     pr.purchases.forEach((p) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${esc(p.date)}</td><td><b></b></td><td>${esc(p.bill_no || '—')}</td><td>${fmt(p.total)}</td><td>${fmt(p.paid_amount)}</td><td>${p.pending_amount > 0 ? `<span class="pend-amt">${fmt(p.pending_amount)}</span>` : fmt(0)}</td><td>${statusTag(p.status)}</td><td style="white-space:nowrap"></td>`;
-      tr.children[1].querySelector('b').textContent = p.supplier_name || '—';
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${esc(p.date)}</td><td><b></b></td><td>${esc(p.bill_no || '—')}</td><td>${fmt(p.total)}</td><td>${fmt(p.paid_amount)}</td><td>${p.pending_amount > 0 ? `<span class="pend-amt">${fmt(p.pending_amount)}</span>` : fmt(0)}</td><td>${statusTag(p.status)}</td><td style="white-space:nowrap"></td>`;
+      row.children[1].querySelector('b').textContent = p.supplier_name || '—';
       const view = document.createElement('button');
-      view.className = 'btn btn-soft btn-sm'; view.textContent = isHi() ? 'देखो / पेमेंट' : 'View / Pay';
+      view.className = 'btn btn-soft btn-sm'; view.textContent = tr("View / Pay", "देखो / पेमेंट");
       view.addEventListener('click', () => openPurchaseDetail(p.id));
-      tr.children[7].appendChild(view);
-      tb.appendChild(tr);
+      row.children[7].appendChild(view);
+      tb.appendChild(row);
     });
   } catch (e) { showErr('purErr', stage2Friendly(e)); }
 }
@@ -1356,9 +1828,9 @@ function purItemRow() {
   row.className = 'item-row';
   const opts = allProducts.map((p) => `<option value="${p.id}" data-buy="${Number(p.buy_price)}">${esc(p.name)} (${esc(p.unit)})</option>`).join('');
   row.innerHTML = `
-    <div class="field" style="margin:0"><label>${isHi() ? 'सामान' : 'Product'}</label><select class="input pi-prod">${opts}</select></div>
+    <div class="field" style="margin:0"><label>${tr("Product", "सामान")}</label><select class="input pi-prod">${opts}</select></div>
     <div class="field" style="margin:0"><label>Qty</label><input class="input pi-qty" type="number" min="0" step="0.01" value="1"></div>
-    <div class="field" style="margin:0"><label>${isHi() ? 'खरीद ₹' : 'Buy ₹'}</label><input class="input pi-price" type="number" min="0" step="0.01" value="0"></div>
+    <div class="field" style="margin:0"><label>${tr("Buy ₹", "खरीद ₹")}</label><input class="input pi-price" type="number" min="0" step="0.01" value="0"></div>
     <div class="amt-cell pi-amt">₹0</div>
     <button type="button" class="btn btn-danger btn-sm rm">✕</button>`;
   const sel = row.querySelector('.pi-prod');
@@ -1389,8 +1861,8 @@ async function openPurchaseForm() {
     const [sr, ps] = await Promise.all([api('GET', '/api/suppliers'), api('GET', '/api/products')]);
     allSuppliers = sr.suppliers; allProducts = ps.products;
   } catch (e) { showErr('purErr', stage2Friendly(e)); return; }
-  if (!allSuppliers.length) { showErr('purErr', isHi() ? 'पहले एक सप्लायर जोड़ो।' : 'Add a supplier first.'); document.querySelector('#nav .nav-item[data-screen="suppliers"]').click(); return; }
-  if (!allProducts.length) { showErr('purErr', isHi() ? 'पहले सामान जोड़ो।' : 'Add a product first.'); document.querySelector('#nav .nav-item[data-screen="products"]').click(); return; }
+  if (!allSuppliers.length) { showErr('purErr', tr("Add a supplier first.", "पहले एक सप्लायर जोड़ो।")); document.querySelector('#nav .nav-item[data-screen="suppliers"]').click(); return; }
+  if (!allProducts.length) { showErr('purErr', tr("Add a product first.", "पहले सामान जोड़ो।")); document.querySelector('#nav .nav-item[data-screen="products"]').click(); return; }
   $('purSupplier').innerHTML = allSuppliers.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
   $('purBillNo').value = ''; $('purPaid').value = 0; $('purDueDate').value = '';
   $('purItems').innerHTML = '';
@@ -1412,7 +1884,7 @@ $('purchaseForm').addEventListener('submit', async (e) => {
     if (!product_id || !(qty > 0)) bad = true;
     items.push({ product_id, qty, buy_price });
   });
-  if (bad || !items.length) { showErr('purFormErr', isHi() ? 'हर सामान की quantity 0 से ज़्यादा रखो।' : 'Every item needs a quantity above 0.'); return; }
+  if (bad || !items.length) { showErr('purFormErr', tr("Every item needs a quantity above 0.", "हर सामान की quantity 0 से ज़्यादा रखो।")); return; }
   try {
     const purBody = {
       supplier_id: Number($('purSupplier').value), bill_no: $('purBillNo').value,
@@ -1431,8 +1903,8 @@ async function openPurchaseDetail(id) {
     const r = await api('GET', '/api/purchases/' + id);
     currentPurchaseId = id;
     const p = r.purchase;
-    $('pdTitle').textContent = (isHi() ? 'खरीद #' : 'Purchase #') + p.id + ' · ' + (p.supplier_name || '');
-    $('pdMeta').textContent = `${p.date} · ${isHi() ? 'कुल' : 'Total'} ${fmt(p.total)} · ${isHi() ? 'दिया' : 'Paid'} ${fmt(p.paid_amount)} · ${isHi() ? 'बाकी' : 'Pending'} ${fmt(p.pending_amount)} · ${p.status}`;
+    $('pdTitle').textContent = (tr("Purchase #", "खरीद #")) + p.id + ' · ' + (p.supplier_name || '');
+    $('pdMeta').textContent = `${p.date} · ${tr("Total", "कुल")} ${fmt(p.total)} · ${tr("Paid", "दिया")} ${fmt(p.paid_amount)} · ${tr("Pending", "बाकी")} ${fmt(p.pending_amount)} · ${p.status}`;
     const ib = $('pdItems'); ib.innerHTML = '';
     r.items.forEach((it) => {
       const tr = document.createElement('tr');
@@ -1442,7 +1914,7 @@ async function openPurchaseDetail(id) {
     });
     const pb = $('pdPayments'); pb.innerHTML = '';
     if (!r.payments.length) {
-      pb.innerHTML = `<tr><td colspan="3" style="color:var(--muted)">${isHi() ? 'अभी कोई पेमेंट नहीं।' : 'No payments yet.'}</td></tr>`;
+      pb.innerHTML = `<tr><td colspan="3" style="color:var(--muted)">${tr("No payments yet.", "अभी कोई पेमेंट नहीं।")}</td></tr>`;
     }
     r.payments.forEach((pay) => {
       const tr = document.createElement('tr');
@@ -1450,8 +1922,8 @@ async function openPurchaseDetail(id) {
       pb.appendChild(tr);
     });
     $('pdPendingLine').textContent = p.pending_amount > 0
-      ? (isHi() ? `बाकी देना है: ${fmt(p.pending_amount)}` : `Still pending: ${fmt(p.pending_amount)}`)
-      : (isHi() ? 'पूरा पेमेंट हो गया ✓' : 'Fully paid ✓');
+      ? (tr(`Still pending: ${fmt(p.pending_amount)}`, `बाकी देना है: ${fmt(p.pending_amount)}`, `Abhi dena baaki: ${fmt(p.pending_amount)}`))
+      : (tr("Fully paid ✓", "पूरा पेमेंट हो गया ✓"));
     $('pdDueDate').value = p.due_date || '';
     $('payAmount').value = p.pending_amount > 0 ? p.pending_amount : '';
     $('purchaseDetailCard').classList.remove('hidden');
@@ -1487,15 +1959,16 @@ $('payForm').addEventListener('submit', async (e) => {
 function stage3Friendly(err) {
   if (err.message === 'insufficient_stock') {
     const p = err.data && err.data.product ? err.data.product : '';
-    return (isHi() ? 'स्टॉक कम है' : 'Not enough stock') + (p ? ' — ' + p : '') +
-      (isHi() ? '। पहले खरीद (purchase) करो या quantity कम करो।' : '. Add a purchase first, or reduce the quantity.');
+    return (tr("Not enough stock", "स्टॉक कम है")) + (p ? ' — ' + p : '') +
+      (tr(". Add a purchase first, or reduce the quantity.", "। पहले खरीद (purchase) करो या quantity कम करो।"));
   }
   const map = {
-    'billing_access_only': 'Your login has Stock access only — billing work is not allowed. / तुम्हारे login को सिर्फ़ Stock access है — बिलिंग का काम नहीं मिलेगा।',
-    'customer_has_invoices': 'This customer has bills, so it cannot be deleted. / इस ग्राहक के बिल हैं, इसलिए delete नहीं होगा।',
-    'payment is more than the pending amount': 'Payment is more than the pending amount. / पेमेंट बाकी रकम से ज़्यादा है।'
+    'billing_access_only': ['Your login has Stock access only — billing work is not allowed.', 'आपके login को सिर्फ़ Stock access है — बिलिंग का काम नहीं मिलेगा।', 'Aapke login ko sirf Stock access hai — billing ka kaam nahi milega.'],
+    'customer_has_invoices': ['This customer has bills, so it cannot be deleted.', 'इस ग्राहक के बिल हैं, इसलिए delete नहीं होगा।', 'Is customer ke bill hain, isliye delete nahi hoga.'],
+    'payment is more than the pending amount': ['Payment is more than the pending amount.', 'पेमेंट बाकी रकम से ज़्यादा है।', 'Payment baaki rakam se zyada hai.']
   };
-  return map[err.message] || stage2Friendly(err);
+  const m = map[err.message];
+  return m ? tr(m[0], m[1], m[2]) : stage2Friendly(err);
 }
 
 // ---------- dashboard summary ----------
@@ -1505,19 +1978,19 @@ async function loadDashboardSummary() {
     const s = await api('GET', '/api/dashboard-summary');
     $('dashSaleVal').textContent = fmt(s.todays_sale);
     $('dashSaleSub').textContent = s.todays_bills > 0
-      ? `${s.todays_bills} ${isHi() ? 'बिल आज बने' : 'bills today'}`
-      : (isHi() ? 'आज अभी कोई बिल नहीं' : 'No bills yet today');
+      ? `${s.todays_bills} ${tr("bills today", "बिल आज बने")}`
+      : (tr("No bills yet today", "आज अभी कोई बिल नहीं"));
     $('dashCollectVal').textContent = fmt(s.total_pending_collection);
     $('dashCollectSub').textContent = s.total_pending_collection > 0
-      ? `${s.pending_customer_count} ${isHi() ? 'ग्राहकों का बाकी है' : 'customers pending'}`
-      : (isHi() ? 'कुछ बाकी नहीं' : 'Nothing pending');
+      ? `${s.pending_customer_count} ${tr("customers pending", "ग्राहकों का बाकी है")}`
+      : (tr("Nothing pending", "कुछ बाकी नहीं"));
     const rb = $('dashRecentBills');
     rb.innerHTML = '';
     if (!s.recent_bills.length) {
-      rb.innerHTML = `<div class="hint">${isHi() ? 'अभी कोई बिल नहीं बना। पहला बिल Billing से बनाओ।' : 'No bills yet. Make your first bill from Billing.'}</div>`;
+      rb.innerHTML = `<div class="hint">${tr("No bills yet. Make your first bill from Billing.", "अभी कोई बिल नहीं बना। पहला बिल Billing से बनाओ।")}</div>`;
     } else {
       const tbl = document.createElement('table');
-      tbl.innerHTML = `<thead><tr><th>${isHi() ? 'बिल' : 'Bill'}</th><th>${isHi() ? 'ग्राहक' : 'Customer'}</th><th>${isHi() ? 'कुल' : 'Total'}</th><th>${isHi() ? 'हालत' : 'Status'}</th><th></th></tr></thead>`;
+      tbl.innerHTML = `<thead><tr><th>${tr("Bill", "बिल")}</th><th>${tr("Customer", "ग्राहक")}</th><th>${tr("Total", "कुल")}</th><th>${tr("Status", "हालत")}</th><th></th></tr></thead>`;
       const tb = document.createElement('tbody');
       s.recent_bills.forEach((inv) => {
         const tr = document.createElement('tr');
@@ -1546,7 +2019,7 @@ async function loadDashboardSummary() {
     const pc = $('dashPendingCust');
     pc.innerHTML = '';
     if (!s.pending_customers.length) {
-      pc.innerHTML = `<div class="offline-note" style="margin-top:0">🟢 ${isHi() ? 'किसी का उधार बाकी नहीं है।' : 'Nobody has pending udhaar.'}</div>`;
+      pc.innerHTML = `<div class="offline-note" style="margin-top:0">🟢 ${tr("Nobody has pending credit.", "किसी का उधार बाकी नहीं है।")}</div>`;
     } else {
       s.pending_customers.forEach((c) => {
         const row = document.createElement('div');
@@ -1557,7 +2030,7 @@ async function loadDashboardSummary() {
         if (c.customer_id) {
           const rem = document.createElement('button');
           rem.className = 'btn btn-wa btn-sm';
-          rem.textContent = isHi() ? 'रिमाइंडर' : 'Remind';
+          rem.textContent = tr("Remind", "रिमाइंडर");
           rem.addEventListener('click', () => sendReminderWhatsApp(c.customer_id, 'dashCollectSub', () => loadDashboardSummary()));
           row.appendChild(rem);
         }
@@ -1603,11 +2076,11 @@ let currentInvoiceDetail = null;
 function updateBillGstHint() {
   const on = me && me.business.gst_enabled;
   $('billGstHint').textContent = on
-    ? (isHi() ? `GST बिल · GSTIN ${me.business.gstin || '—'} · भावों में GST शामिल है` : `GST bill · GSTIN ${me.business.gstin || '—'} · Prices include GST`)
-    : (isHi() ? 'सादा बिल · GST बंद है (Settings में OFF)' : 'Simple bill · GST is OFF (in Settings)');
+    ? (tr(`GST bill · GSTIN ${me.business.gstin || '—'} · Prices include GST`, `GST बिल · GSTIN ${me.business.gstin || '—'} · भावों में GST शामिल है`, `GST bill · GSTIN ${me.business.gstin || '—'} · Bhaav me GST shaamil hai`))
+    : (tr("Simple bill · GST is OFF (in Settings)", "सादा बिल · GST बंद है (Settings में OFF)"));
   $('sumGstNote').textContent = on
-    ? (isHi() ? 'भावों में GST शामिल है।' : 'Prices include GST.')
-    : (isHi() ? 'GST बंद है — बिल में GST नहीं लगेगा।' : 'GST is OFF — no GST on this bill.');
+    ? (tr("Prices include GST.", "भावों में GST शामिल है।"))
+    : (tr("GST is OFF — no GST on this bill.", "GST बंद है — बिल में GST नहीं लगेगा।"));
 }
 
 async function loadBilling() {
@@ -1676,7 +2149,7 @@ function fillEstCustomerSelect() {
   const cur = sel.value;
   sel.innerHTML = '';
   const walk = document.createElement('option');
-  walk.value = ''; walk.textContent = isHi() ? 'वॉक-इन ग्राहक (बिना नाम)' : 'Walk-in customer';
+  walk.value = ''; walk.textContent = tr("Walk-in customer", "वॉक-इन ग्राहक (बिना नाम)");
   sel.appendChild(walk);
   estCustomers.forEach((c) => {
     const o = document.createElement('option');
@@ -1687,16 +2160,16 @@ function fillEstCustomerSelect() {
 }
 function estProductOptions(sel) {
   sel.innerHTML = estProducts.map((p) =>
-    `<option value="${p.id}" data-sell="${Number(p.sell_price)}" data-gst="${Number(p.gst_rate)}" data-stock="${Number(p.stock_qty)}">${esc(p.name)} (${esc(p.unit)}) · ${fmt(p.sell_price)} · ${isHi() ? 'स्टॉक' : 'stock'} ${fmtQty(p.stock_qty)}</option>`
+    `<option value="${p.id}" data-sell="${Number(p.sell_price)}" data-gst="${Number(p.gst_rate)}" data-stock="${Number(p.stock_qty)}">${esc(p.name)} (${esc(p.unit)}) · ${fmt(p.sell_price)} · ${tr("stock", "स्टॉक")} ${fmtQty(p.stock_qty)}</option>`
   ).join('');
 }
 function estItemRow() {
   const row = document.createElement('div');
   row.className = 'bill-item-row';
   row.innerHTML = `
-    <div class="field" style="margin:0"><label>${isHi() ? 'सामान' : 'Product'}</label><input class="input bi-search" type="text" autocomplete="off" placeholder="${isHi() ? 'सामान खोजो…' : 'Search product…'}" style="margin-bottom:6px"><select class="input bi-prod"></select></div>
+    <div class="field" style="margin:0"><label>${tr("Product", "सामान")}</label><input class="input bi-search" type="text" autocomplete="off" placeholder="${tr("Search product…", "सामान खोजो…")}" style="margin-bottom:6px"><select class="input bi-prod"></select></div>
     <div class="field" style="margin:0"><label>Qty</label><input class="input bi-qty" type="number" min="0" step="0.01" value="1"></div>
-    <div class="field" style="margin:0"><label>${isHi() ? 'भाव ₹' : 'Rate ₹'}</label><input class="input bi-rate" type="number" min="0" step="0.01" value="0"></div>
+    <div class="field" style="margin:0"><label>${tr("Rate ₹", "भाव ₹")}</label><input class="input bi-rate" type="number" min="0" step="0.01" value="0"></div>
     <div class="gst-cell bi-gst">—</div>
     <div class="amt-cell bi-amt">₹0</div>
     <button type="button" class="btn btn-danger btn-sm rm">✕</button>`;
@@ -1751,7 +2224,7 @@ function estRecalc() {
   const discount = Number($('estDiscount').value) || 0;
   const total = Math.max(subtotal - discount, 0);
   $('estSumSubtotal').textContent = fmt(subtotal);
-  $('estSumGst').textContent = gstOn ? fmt(gst) : (isHi() ? 'GST बंद है' : 'GST OFF');
+  $('estSumGst').textContent = gstOn ? fmt(gst) : (tr("GST OFF", "GST बंद है"));
   $('estSumTotal').textContent = fmt(total);
   return { subtotal, total, gst };
 }
@@ -1769,7 +2242,7 @@ $('estForm').addEventListener('submit', async (e) => {
     if (!product_id || !(qty > 0)) bad = true;
     items.push({ product_id, qty, price });
   });
-  if (bad || !items.length) { showErr('estErr', isHi() ? 'हर सामान चुनो और quantity 0 से ज़्यादा रखो।' : 'Choose a product for every row and keep quantity above 0.'); return; }
+  if (bad || !items.length) { showErr('estErr', tr("Choose a product for every row and keep quantity above 0.", "हर सामान चुनो और quantity 0 से ज़्यादा रखो।")); return; }
   try {
     const cv = $('estCustomer').value;
     const r = await api('POST', '/api/estimates', {
@@ -1787,22 +2260,22 @@ $('estForm').addEventListener('submit', async (e) => {
 });
 function estimateStatusTag(e) {
   return e.status === 'converted'
-    ? `<span class="tag tag-paid">${isHi() ? 'बिल बन गया' : 'Converted'}</span>`
-    : `<span class="tag tag-part">${isHi() ? 'खुला है' : 'Open'}</span>`;
+    ? `<span class="tag tag-paid">${tr("Converted", "बिल बन गया")}</span>`
+    : `<span class="tag tag-part">${tr("Open", "खुला है")}</span>`;
 }
 function renderEstimateList(estimates) {
   const tb = $('estRows');
   tb.innerHTML = '';
   $('estEmpty').classList.toggle('hidden', estimates.length > 0);
   estimates.forEach((e) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td><b>#${e.estimate_no}</b></td><td>${esc(e.date)}</td><td></td><td>${fmt(e.total)}</td><td>${estimateStatusTag(e)}</td><td style="white-space:nowrap"></td>`;
-    tr.children[2].textContent = e.customer_name;
+    const row = document.createElement('tr');
+    row.innerHTML = `<td><b>#${e.estimate_no}</b></td><td>${esc(e.date)}</td><td></td><td>${fmt(e.total)}</td><td>${estimateStatusTag(e)}</td><td style="white-space:nowrap"></td>`;
+    row.children[2].textContent = e.customer_name;
     const view = document.createElement('button');
-    view.className = 'btn btn-soft btn-sm'; view.textContent = isHi() ? 'देखो' : 'View';
+    view.className = 'btn btn-soft btn-sm'; view.textContent = tr("View", "देखो");
     view.addEventListener('click', () => openEstimateDetail(e.id));
-    tr.children[5].appendChild(view);
-    tb.appendChild(tr);
+    row.children[5].appendChild(view);
+    tb.appendChild(row);
   });
 }
 async function openEstimateDetail(id) {
@@ -1812,8 +2285,8 @@ async function openEstimateDetail(id) {
     currentEstimateId = id;
     currentEstimate = r.estimate;
     const e = r.estimate;
-    $('edTitle').textContent = `${isHi() ? 'एस्टीमेट' : 'Estimate'} #${e.estimate_no} · ${e.customer_name}`;
-    $('edMeta').textContent = `${e.date} · ${e.status === 'converted' ? (isHi() ? 'बिल बन गया' : 'Converted to bill') : (isHi() ? 'खुला है' : 'Open')}`;
+    $('edTitle').textContent = `${tr("Estimate", "एस्टीमेट")} #${e.estimate_no} · ${e.customer_name}`;
+    $('edMeta').textContent = `${e.date} · ${e.status === 'converted' ? (tr("Converted to bill", "बिल बन गया")) : (tr("Open", "खुला है"))}`;
     const ib = $('edItems'); ib.innerHTML = '';
     r.items.forEach((it) => {
       const tr = document.createElement('tr');
@@ -1868,7 +2341,7 @@ $('edWaGo').addEventListener('click', async () => {
   if (!currentEstimateId) return;
   hideErr('edWaErr');
   const p = $('edWaPhone').value.trim();
-  if (!p) { showErr('edWaErr', isHi() ? 'Pehle WhatsApp number likho।' : 'Write the WhatsApp number first.'); return; }
+  if (!p) { showErr('edWaErr', tr("Write the WhatsApp number first.", "Pehle WhatsApp number likho।")); return; }
   try {
     const r = await api('GET', `/api/estimates/${currentEstimateId}/whatsapp-link?phone=${encodeURIComponent(p)}`);
     window.open(r.url, '_blank');
@@ -1889,7 +2362,7 @@ function fillBillCustomerSelect() {
   const cur = sel.value;
   sel.innerHTML = '';
   const walk = document.createElement('option');
-  walk.value = ''; walk.textContent = isHi() ? 'वॉक-इन ग्राहक (बिना नाम)' : 'Walk-in customer';
+  walk.value = ''; walk.textContent = tr("Walk-in customer", "वॉक-इन ग्राहक (बिना नाम)");
   sel.appendChild(walk);
   billCustomers.forEach((c) => {
     const o = document.createElement('option');
@@ -1897,7 +2370,7 @@ function fillBillCustomerSelect() {
     sel.appendChild(o);
   });
   const nw = document.createElement('option');
-  nw.value = '__new__'; nw.textContent = isHi() ? '＋ नया ग्राहक बनाओ' : '＋ New customer';
+  nw.value = '__new__'; nw.textContent = tr("＋ New customer", "＋ नया ग्राहक बनाओ");
   sel.appendChild(nw);
   if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
   $('newCustWrap').classList.toggle('hidden', sel.value !== '__new__');
@@ -1907,16 +2380,16 @@ $('billCustomer').addEventListener('change', () => {
 });
 function billProductOptions(sel) {
   sel.innerHTML = billProducts.map((p) =>
-    `<option value="${p.id}" data-sell="${Number(p.sell_price)}" data-gst="${Number(p.gst_rate)}" data-stock="${Number(p.stock_qty)}">${esc(p.name)} (${esc(p.unit)}) · ${fmt(p.sell_price)} · ${isHi() ? 'स्टॉक' : 'stock'} ${fmtQty(p.stock_qty)}</option>`
+    `<option value="${p.id}" data-sell="${Number(p.sell_price)}" data-gst="${Number(p.gst_rate)}" data-stock="${Number(p.stock_qty)}">${esc(p.name)} (${esc(p.unit)}) · ${fmt(p.sell_price)} · ${tr("stock", "स्टॉक")} ${fmtQty(p.stock_qty)}</option>`
   ).join('');
 }
 function billItemRow() {
   const row = document.createElement('div');
   row.className = 'bill-item-row';
   row.innerHTML = `
-    <div class="field" style="margin:0"><label>${isHi() ? 'सामान' : 'Product'}</label><input class="input bi-search" type="text" autocomplete="off" placeholder="${isHi() ? 'सामान खोजो…' : 'Search product…'}" style="margin-bottom:6px"><select class="input bi-prod"></select><div class="qty-warn"></div></div>
+    <div class="field" style="margin:0"><label>${tr("Product", "सामान")}</label><input class="input bi-search" type="text" autocomplete="off" placeholder="${tr("Search product…", "सामान खोजो…")}" style="margin-bottom:6px"><select class="input bi-prod"></select><div class="qty-warn"></div></div>
     <div class="field" style="margin:0"><label>Qty</label><input class="input bi-qty" type="number" min="0" step="0.01" value="1"></div>
-    <div class="field" style="margin:0"><label>${isHi() ? 'भाव ₹' : 'Rate ₹'}</label><input class="input bi-rate" type="number" min="0" step="0.01" value="0"></div>
+    <div class="field" style="margin:0"><label>${tr("Rate ₹", "भाव ₹")}</label><input class="input bi-rate" type="number" min="0" step="0.01" value="0"></div>
     <div class="gst-cell bi-gst">—</div>
     <div class="amt-cell bi-amt">₹0</div>
     <button type="button" class="btn btn-danger btn-sm rm">✕</button>`;
@@ -1969,7 +2442,7 @@ function billRecalc() {
     const warn = row.querySelector('.qty-warn');
     const over = qty > stock;
     warn.classList.toggle('show', over);
-    if (over) warn.textContent = isHi() ? `स्टॉक सिर्फ़ ${fmtQty(stock)} है` : `Only ${fmtQty(stock)} in stock`;
+    if (over) warn.textContent = tr(`Only ${fmtQty(stock)} in stock`, `स्टॉक सिर्फ़ ${fmtQty(stock)} है`, `Stock me sirf ${fmtQty(stock)} hai`);
     const gr = o ? Number(o.dataset.gst) : 0;
     row.querySelector('.bi-gst').textContent = gstOn ? (gr + '% GST') : '—';
     subtotal += amt;
@@ -1979,7 +2452,7 @@ function billRecalc() {
   const discount = Number($('billDiscount').value) || 0;
   const total = Math.max(subtotal - discount, 0);
   $('sumSubtotal').textContent = fmt(subtotal);
-  $('sumGst').textContent = gstOn ? fmt(gst) : (isHi() ? 'GST बंद है' : 'GST OFF');
+  $('sumGst').textContent = gstOn ? fmt(gst) : (tr("GST OFF", "GST बंद है"));
   $('sumTotal').textContent = fmt(total);
   const paid = Number($('billPaid').value) || 0;
   $('sumBalance').textContent = fmt(Math.max(total - paid, 0));
@@ -2019,13 +2492,13 @@ $('billForm').addEventListener('submit', async (e) => {
     if (!product_id || !(qty > 0)) bad = true;
     items.push({ product_id, qty, sell_price });
   });
-  if (bad || !items.length) { showErr('billErr', isHi() ? 'हर सामान चुनो और quantity 0 से ज़्यादा रखो।' : 'Choose a product for every row and keep quantity above 0.'); return; }
+  if (bad || !items.length) { showErr('billErr', tr("Choose a product for every row and keep quantity above 0.", "हर सामान चुनो और quantity 0 से ज़्यादा रखो।")); return; }
   try {
     let customer_id = null;
     const cv = $('billCustomer').value;
     if (cv === '__new__') {
       const nm = $('ncName').value.trim();
-      if (!nm) { showErr('billErr', isHi() ? 'नए ग्राहक का नाम लिखो।' : 'Write the new customer name.'); return; }
+      if (!nm) { showErr('billErr', tr("Write the new customer name.", "नए ग्राहक का नाम लिखो।")); return; }
       const cr = await api('POST', '/api/customers', { name: nm, phone: $('ncPhone').value.trim() });
       customer_id = cr.customer.id;
     } else if (cv) customer_id = Number(cv);
@@ -2043,8 +2516,8 @@ $('billForm').addEventListener('submit', async (e) => {
     const r = await api('POST', '/api/invoices', billBody);
     lastInvoiceId = r.invoice.id;
     const inv = r.invoice;
-    $('bsTitle').textContent = `✓ ${isHi() ? 'बिल' : 'Bill'} #${inv.bill_no} ${isHi() ? 'बन गया' : 'saved'}`;
-    $('bsText').textContent = `${inv.customer_name} · ${isHi() ? 'कुल' : 'Total'} ${fmt(inv.total)} · ${isHi() ? 'मिला' : 'Paid'} ${fmt(inv.paid_amount)} · ${isHi() ? 'बाकी' : 'Balance'} ${fmt(inv.pending_amount)} · ${inv.status}`;
+    $('bsTitle').textContent = `✓ ${tr("Bill", "बिल")} #${inv.bill_no} ${tr("saved", "बन गया")}`;
+    $('bsText').textContent = `${inv.customer_name} · ${tr("Total", "कुल")} ${fmt(inv.total)} · ${tr("Paid", "मिला")} ${fmt(inv.paid_amount)} · ${tr("Balance", "बाकी")} ${fmt(inv.pending_amount)} · ${inv.status}`;
     hideErr('bsErr');
     $('bsWaPhoneWrap').classList.add('hidden');
     $('bsWaPhone').value = '';
@@ -2079,7 +2552,7 @@ $('billRefresh').addEventListener('click', loadBilling);
 // Stage C: an imported opening balance (kind='opening', bill_no 0) is
 // labeled plainly wherever bills are listed — never as a fake "Bill #0".
 function billNoLabel(inv) {
-  if (inv && inv.kind === 'opening') return isHi() ? 'पिछला बाकी' : 'Opening Balance';
+  if (inv && inv.kind === 'opening') return tr("Opening Balance", "पिछला बाकी");
   return '#' + (inv ? inv.bill_no : '');
 }
 function renderInvoiceList(invoices) {
@@ -2087,18 +2560,18 @@ function renderInvoiceList(invoices) {
   tb.innerHTML = '';
   $('invEmpty').classList.toggle('hidden', invoices.length > 0);
   invoices.forEach((inv) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td><b>${billNoLabel(inv)}</b></td><td>${esc(inv.date)}</td><td></td><td>${fmt(inv.total)}</td><td>${fmt(inv.paid_amount)}</td><td>${inv.pending_amount > 0 ? `<span class="pend-amt">${fmt(inv.pending_amount)}</span>` : fmt(0)}</td><td>${statusTag(inv.status)}${syncBadge(inv)}</td><td style="white-space:nowrap"></td>`;
-    tr.children[2].textContent = inv.customer_name;
+    const row = document.createElement('tr');
+    row.innerHTML = `<td><b>${billNoLabel(inv)}</b></td><td>${esc(inv.date)}</td><td></td><td>${fmt(inv.total)}</td><td>${fmt(inv.paid_amount)}</td><td>${inv.pending_amount > 0 ? `<span class="pend-amt">${fmt(inv.pending_amount)}</span>` : fmt(0)}</td><td>${statusTag(inv.status)}${syncBadge(inv)}</td><td style="white-space:nowrap"></td>`;
+    row.children[2].textContent = inv.customer_name;
     const view = document.createElement('button');
-    view.className = 'btn btn-soft btn-sm'; view.textContent = isHi() ? 'देखो / पेमेंट' : 'View / Pay';
+    view.className = 'btn btn-soft btn-sm'; view.textContent = tr("View / Pay", "देखो / पेमेंट");
     view.addEventListener('click', () => openInvoiceDetail(inv.id));
-    tr.children[7].appendChild(view);
+    row.children[7].appendChild(view);
     const wa = document.createElement('button');
     wa.className = 'btn btn-wa btn-sm'; wa.textContent = '💬 WhatsApp';
     wa.addEventListener('click', () => sendBillWhatsApp(inv.id, 'invListErr', () => openInvoiceDetail(inv.id).then(() => showWaPhonePrompt())));
-    tr.children[7].appendChild(wa);
-    tb.appendChild(tr);
+    row.children[7].appendChild(wa);
+    tb.appendChild(row);
   });
 }
 async function openInvoiceDetail(id) {
@@ -2109,8 +2582,8 @@ async function openInvoiceDetail(id) {
     currentInvoiceDetail = r;
     const inv = r.invoice;
     $('idTitle').textContent = inv.kind === 'opening'
-      ? `${isHi() ? 'पिछला बाकी (Opening Balance)' : 'Opening Balance'} · ${inv.customer_name}`
-      : `${isHi() ? 'बिल' : 'Bill'} #${inv.bill_no} · ${inv.customer_name}`;
+      ? `${tr("Opening Balance", "पिछला बाकी (Opening Balance)")} · ${inv.customer_name}`
+      : `${tr("Bill", "बिल")} #${inv.bill_no} · ${inv.customer_name}`;
     $('idMeta').textContent = `${inv.date} · ${inv.status}${inv.gst_enabled ? ' · GST bill' : ''}`;
     const ib = $('idItems'); ib.innerHTML = '';
     r.items.forEach((it) => {
@@ -2126,7 +2599,7 @@ async function openInvoiceDetail(id) {
     $('idTotal').textContent = fmt(inv.total);
     const pb = $('idPayments'); pb.innerHTML = '';
     if (!r.payments.length) {
-      pb.innerHTML = `<tr><td colspan="3" style="color:var(--muted)">${isHi() ? 'अभी कोई पेमेंट नहीं मिली।' : 'No payments received yet.'}</td></tr>`;
+      pb.innerHTML = `<tr><td colspan="3" style="color:var(--muted)">${tr("No payments received yet.", "अभी कोई पेमेंट नहीं मिली।")}</td></tr>`;
     }
     r.payments.forEach((pay) => {
       const tr = document.createElement('tr');
@@ -2137,8 +2610,8 @@ async function openInvoiceDetail(id) {
     const hasReturns = Number(r.returns_total || 0) > 0;
     const netPend = hasReturns ? Number(r.net_pending) : inv.pending_amount;
     $('idPendingLine').textContent = netPend > 0
-      ? (isHi() ? `बाकी लेना है: ${fmt(netPend)}` : `Still to collect: ${fmt(netPend)}`) + (hasReturns ? (isHi() ? ' (वापसी घटाकर)' : ' (after returns)') : '')
-      : (isHi() ? 'पूरा पेमेंट मिल गया ✓' : 'Fully paid ✓');
+      ? (tr(`Still to collect: ${fmt(netPend)}`, `बाकी लेना है: ${fmt(netPend)}`, `Abhi lena baaki: ${fmt(netPend)}`)) + (hasReturns ? (tr(" (after returns)", " (वापसी घटाकर)")) : '')
+      : (tr("Fully paid ✓", "पूरा पेमेंट मिल गया ✓"));
     // Feature 5: due date editor.
     hideErr('idDueErr');
     $('idDueDate').value = inv.due_date || '';
@@ -2154,9 +2627,7 @@ async function openInvoiceDetail(id) {
       svgHolder.innerHTML = r.upi_qr.svg; // server-generated SVG (our own vendored generator — contains no user text)
       const cap = document.createElement('div');
       cap.className = 'hint';
-      cap.textContent = isHi()
-        ? `📷 QR स्कैन करके ${fmt(netPend)} UPI से भेजें`
-        : `📷 Scan the QR to pay ${fmt(netPend)} by UPI`;
+      cap.textContent = tr(`📷 Scan the QR to pay ${fmt(netPend)} by UPI`, `📷 QR स्कैन करके ${fmt(netPend)} UPI से भेजें`, `📷 QR scan karke ${fmt(netPend)} UPI se bhejo`);
       uqBox.appendChild(svgHolder);
       uqBox.appendChild(cap);
       uqBox.classList.remove('hidden');
@@ -2172,8 +2643,8 @@ async function openInvoiceDetail(id) {
     const pd = r.portal_docs || {};
     const readyBox = $('idPortalReady');
     const warns = [];
-    if (pd.business_gstin_missing) warns.push(isHi() ? '⚠️ Tumhara GSTIN Settings me nahi bhara — file ke liye GSTIN zaroori hai.' : '⚠️ Your GSTIN is not set in Settings — the file needs it.');
-    if (pd.items_missing_hsn > 0) warns.push(isHi() ? `⚠️ Is bill ke ${pd.items_missing_hsn} item(s) par HSN code nahi hai — Products me bharo, warna file nahi banegi.` : `⚠️ ${pd.items_missing_hsn} item(s) on this bill have no HSN code — add them in Products, otherwise the file cannot be made.`);
+    if (pd.business_gstin_missing) warns.push(tr("⚠️ Your GSTIN is not set in Settings — the file needs it.", "⚠️ आपका GSTIN Settings में नहीं भरा — file के लिए GSTIN ज़रूरी है।"));
+    if (pd.items_missing_hsn > 0) warns.push(tr(`⚠️ ${pd.items_missing_hsn} item(s) on this bill have no HSN code — add them in Products, otherwise the file cannot be made.`, `⚠️ इस बिल के ${pd.items_missing_hsn} item(s) पर HSN code नहीं है — Products में भरो, वरना file नहीं बनेगी।`, `⚠️ Is bill ke ${pd.items_missing_hsn} item(s) par HSN code nahi hai — Products me bharo, warna file nahi banegi.`));
     if (warns.length) { readyBox.textContent = warns.join(' '); readyBox.classList.remove('hidden'); }
     else { readyBox.textContent = ''; readyBox.classList.add('hidden'); }
     if (pd.top_plan) {
@@ -2182,9 +2653,7 @@ async function openInvoiceDetail(id) {
     } else {
       $('idPortalBtns').classList.add('hidden');
       const up = $('idPortalUpgrade');
-      up.textContent = isHi()
-        ? `🔒 Ye feature sirf top plan${pd.top_plan_name ? ' (' + pd.top_plan_name + ')' : ''} me hai. Generation portal par free hota hai — plan upgrade karne par ready file yahi se mil jayegi.`
-        : `🔒 This feature is part of the top plan${pd.top_plan_name ? ' (' + pd.top_plan_name + ')' : ''}. Generation is free on the government portal — upgrade and the ready file will be right here.`;
+      up.textContent = tr(`🔒 This feature is part of the top plan${pd.top_plan_name ? ' (' + pd.top_plan_name + ')' : ''}. Generation is free on the government portal — upgrade and the ready file will be right here.`, `🔒 ये feature सिर्फ़ top plan${pd.top_plan_name ? ' (' + pd.top_plan_name + ')' : ''} में है। Portal पर generation free है — plan upgrade करने पर तैयार file यहीं मिलेगी।`, `🔒 Ye feature sirf top plan${pd.top_plan_name ? ' (' + pd.top_plan_name + ')' : ''} me hai. Generation portal par free hota hai — plan upgrade karne par ready file yahin mil jayegi.`);
       up.classList.remove('hidden');
     }
     // Stage 5: reminder only when paisa baaki hai AND a registered customer hai.
@@ -2217,7 +2686,7 @@ function renderInvoiceReturns(r) {
   const rets = r.returns || [];
   if (rets.length) {
     const tbl = document.createElement('table');
-    tbl.innerHTML = `<thead><tr><th>Credit Note</th><th>${isHi() ? 'तारीख़' : 'Date'}</th><th>${isHi() ? 'वापसी कुल' : 'Return total'}</th><th>GST</th><th></th></tr></thead>`;
+    tbl.innerHTML = `<thead><tr><th>Credit Note</th><th>${tr("Date", "तारीख़")}</th><th>${tr("Return total", "वापसी कुल")}</th><th>GST</th><th></th></tr></thead>`;
     const tb = document.createElement('tbody');
     rets.forEach((rt) => {
       const tr = document.createElement('tr');
@@ -2246,9 +2715,9 @@ function renderInvoiceReturns(r) {
     row.className = 'row2';
     row.style.alignItems = 'end';
     row.innerHTML = `<div class="field" style="margin:0"><label></label><div class="hint" style="margin:0"></div></div>
-      <div class="field" style="margin:0"><label>${isHi() ? 'वापसी Qty' : 'Return qty'}</label><input class="input ri-qty" type="number" min="0" step="0.01" value="0" max="${Number(it.returnable_qty)}" data-item="${it.id}"></div>`;
+      <div class="field" style="margin:0"><label>${tr("Return qty", "वापसी Qty")}</label><input class="input ri-qty" type="number" min="0" step="0.01" value="0" max="${Number(it.returnable_qty)}" data-item="${it.id}"></div>`;
     row.querySelector('label').textContent = it.product_name;
-    row.querySelector('.hint').textContent = `${isHi() ? 'बिका' : 'Sold'} ${fmtQty(it.qty)} · ${isHi() ? 'पहले वापस' : 'already returned'} ${fmtQty(it.returned_qty || 0)} · ${isHi() ? 'अब वापस हो सकता है' : 'returnable now'} ${fmtQty(it.returnable_qty)}`;
+    row.querySelector('.hint').textContent = `${tr("Sold", "बिका")} ${fmtQty(it.qty)} · ${tr("already returned", "पहले वापस")} ${fmtQty(it.returned_qty || 0)} · ${tr("returnable now", "अब वापस हो सकता है")} ${fmtQty(it.returnable_qty)}`;
     box.appendChild(row);
   });
   $('idReturnReason').value = '';
@@ -2261,7 +2730,7 @@ $('idReturnBtn').addEventListener('click', async () => {
     const q = Number(inp.value) || 0;
     if (q > 0) items.push({ invoice_item_id: Number(inp.dataset.item), qty: q });
   });
-  if (!items.length) { showErr('idReturnErr', isHi() ? 'Kam se kam ek item ki wapsi qty likho।' : 'Write a return quantity for at least one item.'); return; }
+  if (!items.length) { showErr('idReturnErr', tr("Write a return quantity for at least one item.", "Kam se kam ek item ki wapsi qty likho।")); return; }
   try {
     await api('POST', `/api/invoices/${currentInvoiceId}/returns`, {
       items, reason: $('idReturnReason').value.trim() || undefined
@@ -2273,8 +2742,8 @@ $('idReturnBtn').addEventListener('click', async () => {
     loadDashboardSummary();
   } catch (err) {
     if (err.message === 'return_qty_exceeds' && err.data && Array.isArray(err.data.items)) {
-      const names = err.data.items.map((x) => `${x.product_name} (${isHi() ? 'बिका' : 'sold'} ${fmtQty(x.sold)}, ${isHi() ? 'पहले वापस' : 'returned'} ${fmtQty(x.already_returned)})`).join(', ');
-      showErr('idReturnErr', (isHi() ? 'Itni wapsi nahi ho sakti: ' : 'Return quantity is more than sold: ') + names);
+      const names = err.data.items.map((x) => `${x.product_name} (${tr("sold", "बिका")} ${fmtQty(x.sold)}, ${tr("returned", "पहले वापस")} ${fmtQty(x.already_returned)})`).join(', ');
+      showErr('idReturnErr', (tr("Return quantity is more than sold: ", "इतनी वापसी नहीं हो सकती: ")) + names);
     } else {
       showErr('idReturnErr', stage3Friendly(err));
     }
@@ -2329,7 +2798,7 @@ async function printInvoice(id) {
   try {
     const r = await api('GET', '/api/invoices/' + id);
     const inv = r.invoice, biz = r.business;
-    $('pbBiz').textContent = biz.name || 'Business OS';
+    $('pbBiz').textContent = biz.name || 'BizYour';
     $('pbBizSub').textContent = [biz.city, biz.phone ? 'Phone: ' + biz.phone : ''].filter(Boolean).join(' · ') || ' ';
     $('pbGstin').textContent = inv.gst_enabled && biz.gstin ? 'GSTIN: ' + biz.gstin : '';
     $('pbNo').textContent = '#' + inv.bill_no;
@@ -2380,31 +2849,31 @@ async function loadCustomers() {
     tb.innerHTML = '';
     $('custEmpty').classList.toggle('hidden', r.customers.length > 0);
     r.customers.forEach((c) => {
-      const tr = document.createElement('tr');
-      tr.className = 'clickable';
-      tr.innerHTML = `<td><b></b></td><td></td><td></td><td>${fmt(c.total_billed)}</td><td>${fmt(c.total_received)}</td><td>${c.pending > 0 ? `<span class="pend-amt">${fmt(c.pending)}</span>` : (c.pending < 0 ? `<span style="color:var(--green);font-weight:700">${fmt(c.pending)} ${isHi() ? '(credit)' : '(credit)'}</span>` : fmt(0))}</td><td style="white-space:nowrap"></td>`;
-      tr.children[0].querySelector('b').textContent = c.name;
-      tr.children[1].textContent = c.phone || '—';
-      tr.children[2].textContent = c.city || '—';
-      tr.addEventListener('click', () => openCustomerDetail(c.id));
+      const row = document.createElement('tr');
+      row.className = 'clickable';
+      row.innerHTML = `<td><b></b></td><td></td><td></td><td>${fmt(c.total_billed)}</td><td>${fmt(c.total_received)}</td><td>${c.pending > 0 ? `<span class="pend-amt">${fmt(c.pending)}</span>` : (c.pending < 0 ? `<span style="color:var(--green);font-weight:700">${fmt(c.pending)} ${tr("(credit)", "(credit)")}</span>` : fmt(0))}</td><td style="white-space:nowrap"></td>`;
+      row.children[0].querySelector('b').textContent = c.name;
+      row.children[1].textContent = c.phone || '—';
+      row.children[2].textContent = c.city || '—';
+      row.addEventListener('click', () => openCustomerDetail(c.id));
       const edit = document.createElement('button');
-      edit.className = 'btn btn-ghost btn-sm'; edit.textContent = isHi() ? 'बदलो' : 'Edit';
+      edit.className = 'btn btn-ghost btn-sm'; edit.textContent = tr("Edit", "बदलो");
       edit.addEventListener('click', (ev) => { ev.stopPropagation(); openCustomerForm(c); });
       const del = document.createElement('button');
-      del.className = 'btn btn-danger btn-sm'; del.textContent = isHi() ? 'हटाओ' : 'Delete';
+      del.className = 'btn btn-danger btn-sm'; del.textContent = tr("Delete", "हटाओ");
       del.addEventListener('click', async (ev) => {
         ev.stopPropagation();
-        if (!confirm((isHi() ? 'हटाना है: ' : 'Delete ') + c.name + '?')) return;
+        if (!confirm((tr("Delete ", "हटाना है: ")) + c.name + '?')) return;
         try { await api('DELETE', '/api/customers/' + c.id); loadCustomers(); } catch (err) { showErr('custErr', stage3Friendly(err)); }
       });
-      tr.children[6].append(edit, del);
+      row.children[6].append(edit, del);
       if (c.pending > 0) {
         const wa = document.createElement('button');
-        wa.className = 'btn btn-wa btn-sm'; wa.textContent = isHi() ? '💬 WhatsApp रिमाइंडर' : '💬 WhatsApp Reminder';
+        wa.className = 'btn btn-wa btn-sm'; wa.textContent = tr("💬 WhatsApp Reminder", "💬 WhatsApp रिमाइंडर");
         wa.addEventListener('click', (ev) => { ev.stopPropagation(); sendReminderWhatsApp(c.id, 'custErr', () => loadCustomers()); });
-        tr.children[6].appendChild(wa);
+        row.children[6].appendChild(wa);
       }
-      tb.appendChild(tr);
+      tb.appendChild(row);
     });
   } catch (e) { showErr('custErr', stage3Friendly(e)); }
 }
@@ -2412,7 +2881,7 @@ function openCustomerForm(c) {
   hideErr('cfErr');
   $('customerFormCard').classList.remove('hidden');
   $('cfId').value = c ? c.id : '';
-  $('cfTitle').textContent = c ? (isHi() ? 'ग्राहक बदलो' : 'Edit customer') : (isHi() ? 'ग्राहक जोड़ो' : 'Add customer');
+  $('cfTitle').textContent = c ? (tr("Edit customer", "ग्राहक बदलो")) : (tr("Add customer", "ग्राहक जोड़ो"));
   $('cfName').value = c ? c.name : '';
   $('cfPhone').value = c ? c.phone : '';
   $('cfCity').value = c ? c.city : '';
@@ -2446,12 +2915,12 @@ async function openCustomerDetail(id) {
     // Feature 2: wapsi alag line me, pending hamesha returns ghata kar.
     $('cdReturnsRow').classList.toggle('hidden', !(Number(c.total_returns || 0) > 0));
     $('cdReturns').textContent = '−' + fmt(c.total_returns || 0);
-    $('cdPending').textContent = fmt(c.pending) + (c.pending < 0 ? (isHi() ? ' (customer ka credit hai)' : ' (customer credit)') : '');
+    $('cdPending').textContent = fmt(c.pending) + (c.pending < 0 ? (tr(" (customer credit)", " (ग्राहक का जमा)")) : '');
     // Feature 5: agli due date.
     if (r.due_info) {
       $('cdDueRow').classList.remove('hidden');
       $('cdDue').textContent = `${r.due_info.next_due_date} · ${fmt(r.due_info.amount)}` +
-        (Number(r.due_info.total_due_amount) !== Number(r.due_info.amount) ? ` (${isHi() ? 'kul due' : 'total due'} ${fmt(r.due_info.total_due_amount)})` : '');
+        (Number(r.due_info.total_due_amount) !== Number(r.due_info.amount) ? ` (${tr("total due", "कुल बाकी")} ${fmt(r.due_info.total_due_amount)})` : '');
     } else {
       $('cdDueRow').classList.add('hidden');
     }
@@ -2465,11 +2934,11 @@ async function openCustomerDetail(id) {
     $('cdHisabRegen').classList.add('hidden');
     $('cdHisabOff').classList.add('hidden');
     $('cdHisabMake').textContent = c.hisab_enabled
-      ? (isHi() ? 'Hisab link dekho' : 'See hisab link')
-      : (isHi() ? 'Hisab link banao' : 'Make hisab link');
+      ? (tr("See account link", "हिसाब लिंक देखो"))
+      : (tr("Create account link", "हिसाब लिंक बनाओ"));
     const tb = $('cdInvoices'); tb.innerHTML = '';
     if (!r.invoices.length) {
-      tb.innerHTML = `<tr><td colspan="6" style="color:var(--muted)">${isHi() ? 'इस ग्राहक का अभी कोई बिल नहीं।' : 'No bills for this customer yet.'}</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="6" style="color:var(--muted)">${tr("No bills for this customer yet.", "इस ग्राहक का अभी कोई बिल नहीं।")}</td></tr>`;
     }
     r.invoices.forEach((inv) => {
       const tr = document.createElement('tr');
@@ -2516,22 +2985,20 @@ $('cdHisabMake').addEventListener('click', async () => {
 });
 $('cdHisabCopy').addEventListener('click', async () => {
   if (!currentHisabUrl) return;
-  try { await navigator.clipboard.writeText(currentHisabUrl); $('cdHisabCopy').textContent = isHi() ? 'Copy ho gaya ✓' : 'Copied ✓'; setTimeout(() => { $('cdHisabCopy').textContent = isHi() ? 'लिंक copy करो' : 'Copy link'; }, 1500); }
+  try { await navigator.clipboard.writeText(currentHisabUrl); $('cdHisabCopy').textContent = tr("Copied ✓", "कॉपी हो गया ✓"); setTimeout(() => { $('cdHisabCopy').textContent = tr("Copy link", "लिंक copy करो"); }, 1500); }
   catch (e) { $('cdHisabUrl').select(); document.execCommand && document.execCommand('copy'); }
 });
 $('cdHisabWa').addEventListener('click', () => {
   if (!currentHisabUrl) return;
   const phone = currentCustomer ? waNum(currentCustomer.phone) : '';
-  if (!phone) { showErr('cdHisabErr', isHi() ? 'Customer ka mobile number nahi hai — pehle number jodo.' : 'The customer has no mobile number — add it first.'); return; }
+  if (!phone) { showErr('cdHisabErr', tr("The customer has no mobile number — add it first.", "ग्राहक का मोबाइल नंबर नहीं है — पहले नंबर जोड़ो।")); return; }
   hideErr('cdHisabErr');
-  const msg = isHi()
-    ? `Namaste ${currentCustomer.name} ji, ${me.business.name} se — aapka pura hisab yahan dekh sakte hain (bills, payments aur baaki): ${currentHisabUrl}`
-    : `Namaste ${currentCustomer.name} ji, from ${me.business.name} — you can see your full hisab here (bills, payments and balance): ${currentHisabUrl}`;
+  const msg = tr(`Hello ${currentCustomer.name}, this is ${me.business.name} — you can see your full account here (bills, payments and balance): ${currentHisabUrl}`, `नमस्ते ${currentCustomer.name} जी, ${me.business.name} की ओर से — आपका पूरा हिसाब यहाँ देख सकते हैं (बिल, पेमेंट और बाकी): ${currentHisabUrl}`, `Namaste ${currentCustomer.name} ji, ${me.business.name} se — aapka poora hisaab yahan dekh sakte hain (bills, payments aur baaki): ${currentHisabUrl}`);
   window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank');
 });
 $('cdHisabRegen').addEventListener('click', async () => {
   if (!currentCustomerId) return;
-  if (!confirm(isHi() ? 'Naya link banega aur PURANA link turant band ho jayega. Pakka?' : 'A new link will be made and the OLD link will stop working at once. Sure?')) return;
+  if (!confirm(tr("A new link will be made and the OLD link will stop working at once. Sure?", "नया लिंक बनेगा और पुराना लिंक तुरंत बंद हो जाएगा। पक्का?"))) return;
   hideErr('cdHisabErr');
   try {
     const r = await api('POST', `/api/customers/${currentCustomerId}/hisab-link/regenerate`, {});
@@ -2540,7 +3007,7 @@ $('cdHisabRegen').addEventListener('click', async () => {
 });
 $('cdHisabOff').addEventListener('click', async () => {
   if (!currentCustomerId) return;
-  if (!confirm(isHi() ? 'Hisab link band kar dein? Customer phir hisab nahi dekh payega.' : 'Turn the hisab link off? The customer will no longer see their hisab.')) return;
+  if (!confirm(tr("Turn the account link off? The customer will no longer see their account.", "हिसाब लिंक बंद करें? ग्राहक फिर अपना हिसाब नहीं देख पाएगा।"))) return;
   hideErr('cdHisabErr');
   try {
     await api('POST', `/api/customers/${currentCustomerId}/hisab-link/disable`, {});
@@ -2550,7 +3017,7 @@ $('cdHisabOff').addEventListener('click', async () => {
     $('cdHisabRegen').classList.add('hidden');
     $('cdHisabOff').classList.add('hidden');
     if (currentCustomer) currentCustomer.hisab_enabled = false;
-    $('cdHisabMake').textContent = isHi() ? 'Hisab link banao' : 'Make hisab link';
+    $('cdHisabMake').textContent = tr("Create account link", "हिसाब लिंक बनाओ");
   } catch (err) { showErr('cdHisabErr', stage3Friendly(err)); }
 });
 
@@ -2567,10 +3034,11 @@ function stage4Friendly(err) { return stage3Friendly(err); }
 // =====================================================================
 function stage5Friendly(err) {
   const map = {
-    'customer_phone_missing': 'Customer ka mobile number nahi hai. Pehle number jodo (customer ko Edit karo) ya bill detail me number daal kar bhejo. / Customer\'s mobile number is missing. Add the number first, or type it in the bill detail.',
-    'no_pending': 'Is customer ka ab kuchh baaki nahi hai. / Nothing is pending for this customer now.'
+    'customer_phone_missing': ['The customer\'s mobile number is missing. Add it first (edit the customer), or type it in the bill detail.', 'ग्राहक का मोबाइल नंबर नहीं है। पहले नंबर जोड़ो (ग्राहक Edit करो) या bill detail में नंबर डालकर भेजो।', 'Customer ka mobile number nahi hai. Pehle number jodo (customer ko Edit karo) ya bill detail me number daal kar bhejo.'],
+    'no_pending': ['Nothing is pending for this customer now.', 'इस ग्राहक का अब कुछ बाकी नहीं है।', 'Is customer ka ab kuch baaki nahi hai.']
   };
-  return map[err.message] || stage4Friendly(err);
+  const m = map[err.message];
+  return m ? tr(m[0], m[1], m[2]) : stage4Friendly(err);
 }
 
 // Opens the WhatsApp bill for an invoice. On customer_phone_missing it calls
@@ -2589,7 +3057,7 @@ async function sendBillWhatsApp(invoiceId, errId, onNeedPhone) {
 async function sendBillWhatsAppWithPhone(invoiceId, phone, errId) {
   hideErr(errId);
   const p = (phone || '').trim();
-  if (!p) { showErr(errId, isHi() ? 'Pehle WhatsApp number likho।' : 'Pehle WhatsApp number likho.'); return; }
+  if (!p) { showErr(errId, tr("Write the WhatsApp number first.", "Pehle WhatsApp number likho।")); return; }
   try {
     const r = await api('GET', `/api/invoices/${invoiceId}/whatsapp-link?phone=${encodeURIComponent(p)}`);
     window.open(r.url, '_blank');
@@ -2637,15 +3105,15 @@ async function loadAlerts() {
       const row = document.createElement('div');
       row.className = 'alert-row';
       const when = kind === 'overdue'
-        ? `<span style="color:var(--red);font-weight:700">${g.days} ${isHi() ? 'din late' : 'days late'}</span>`
+        ? `<span style="color:var(--red);font-weight:700">${g.days} ${tr("days late", "दिन देर")}</span>`
         : kind === 'today'
-          ? `<span style="color:var(--amber);font-weight:700">${isHi() ? 'Aaj dena hai' : 'Due today'}</span>`
-          : `<span>${g.days} ${isHi() ? 'din me dena hai' : 'days left'} · ${esc(g.oldest_due_date)}</span>`;
-      row.innerHTML = `<span><b></b> · ${fmt(g.amount)} · ${g.bill_count} ${isHi() ? 'bill' : 'bills'} · ${when}</span>`;
+          ? `<span style="color:var(--amber);font-weight:700">${tr("Due today", "आज देना है")}</span>`
+          : `<span>${g.days} ${tr("days left", "दिन बाकी")} · ${esc(g.oldest_due_date)}</span>`;
+      row.innerHTML = `<span><b></b> · ${fmt(g.amount)} · ${g.bill_count} ${tr("bills", "बिल")} · ${when}</span>`;
       row.querySelector('b').textContent = g.customer_name;
       const rem = document.createElement('button');
       rem.className = 'btn btn-wa btn-sm';
-      rem.textContent = isHi() ? '💬 रिमाइंडर' : '💬 Remind';
+      rem.textContent = tr("💬 Remind", "💬 रिमाइंडर");
       rem.addEventListener('click', () => sendReminderWhatsApp(g.customer_id, 'alertsErr', () => loadAlerts()));
       row.appendChild(rem);
       box.appendChild(row);
@@ -2655,10 +3123,10 @@ async function loadAlerts() {
       const row = document.createElement('div');
       row.className = 'alert-row';
       const when = kind === 'overdue'
-        ? `<span style="color:var(--red);font-weight:700">${g.days} ${isHi() ? 'din late' : 'days late'}</span>`
+        ? `<span style="color:var(--red);font-weight:700">${g.days} ${tr("days late", "दिन देर")}</span>`
         : kind === 'today'
-          ? `<span style="color:var(--amber);font-weight:700">${isHi() ? 'Aaj dena hai' : 'Due today'}</span>`
-          : `<span>${g.days} ${isHi() ? 'din me dena hai' : 'days left'} · ${esc(g.oldest_due_date)}</span>`;
+          ? `<span style="color:var(--amber);font-weight:700">${tr("Due today", "आज देना है")}</span>`
+          : `<span>${g.days} ${tr("days left", "दिन बाकी")} · ${esc(g.oldest_due_date)}</span>`;
       row.innerHTML = `<span>🚚 <b></b> · ${fmt(g.amount)} · ${when}</span>`;
       row.querySelector('b').textContent = g.supplier_name;
       if (g.phone) {
@@ -2666,9 +3134,7 @@ async function loadAlerts() {
         wa.className = 'btn btn-wa btn-sm';
         wa.textContent = '💬 WhatsApp';
         wa.addEventListener('click', () => {
-          const msg = isHi()
-            ? `Namaste, ${me.business.name} se — aapko ${fmt(g.amount)} dena baaki hai. Hisab ke liye dhanyavaad.`
-            : `Namaste, from ${me.business.name} — ${fmt(g.amount)} is pending to you. Thank you.`;
+          const msg = tr(`Hello, this is ${me.business.name} — ${fmt(g.amount)} is pending to you. Thank you.`, `नमस्ते, ${me.business.name} की ओर से — आपको ${fmt(g.amount)} देना बाकी है। धन्यवाद।`, `Namaste, ${me.business.name} se — aapko ${fmt(g.amount)} dena baaki hai. Dhanyavaad.`);
           window.open('https://wa.me/' + waNum(g.phone) + '?text=' + encodeURIComponent(msg), '_blank');
         });
         row.appendChild(wa);
@@ -2677,33 +3143,33 @@ async function loadAlerts() {
     };
     const cd = a.customer_due || { overdue: [], due_today: [], due_soon: [] };
     const sd = a.supplier_due || { overdue: [], due_today: [], due_soon: [] };
-    if (cd.overdue.length) { head(isHi() ? '🔴 Late hai — pehle inko dekho' : '🔴 Overdue — see these first', 'var(--red)'); cd.overdue.forEach((g) => custRow(g, 'overdue')); }
-    if (cd.due_today.length) { head(isHi() ? '🟠 Aaj due hai' : '🟠 Due today', 'var(--amber)'); cd.due_today.forEach((g) => custRow(g, 'today')); }
-    if (cd.due_soon.length) { head(isHi() ? '🟡 Aane wale 3 din me due' : '🟡 Due in the next 3 days', 'var(--ink)'); cd.due_soon.forEach((g) => custRow(g, 'soon')); }
+    if (cd.overdue.length) { head(tr("🔴 Overdue — see these first", "🔴 देर हो गई — पहले इन्हें देखो"), 'var(--red)'); cd.overdue.forEach((g) => custRow(g, 'overdue')); }
+    if (cd.due_today.length) { head(tr("🟠 Due today", "🟠 आज देना है"), 'var(--amber)'); cd.due_today.forEach((g) => custRow(g, 'today')); }
+    if (cd.due_soon.length) { head(tr("🟡 Due in the next 3 days", "🟡 अगले 3 दिन में देना है"), 'var(--ink)'); cd.due_soon.forEach((g) => custRow(g, 'soon')); }
     if (sd.overdue.length || sd.due_today.length || sd.due_soon.length) {
-      head(isHi() ? '🚚 Supplier ko dena hai' : '🚚 To pay suppliers', 'var(--ink)');
+      head(tr("🚚 To pay suppliers", "🚚 सप्लायर को देना है"), 'var(--ink)');
       sd.overdue.forEach((g) => supRow(g, 'overdue'));
       sd.due_today.forEach((g) => supRow(g, 'today'));
       sd.due_soon.forEach((g) => supRow(g, 'soon'));
     }
     if (a.low_stock && a.low_stock.length) {
       any = true;
-      head(isHi() ? '📦 Stock kam hai' : '📦 Low stock', 'var(--amber)');
+      head(tr("📦 Low stock", "📦 स्टॉक कम है"), 'var(--amber)');
       const chips = document.createElement('div');
       chips.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
       a.low_stock.forEach((p) => {
         const c = document.createElement('span');
         c.className = 'tag tag-part';
-        c.textContent = `${p.name} — ${isHi() ? 'sirf' : 'only'} ${fmtQty(p.stock_qty)} ${isHi() ? 'bacha' : 'left'}`;
+        c.textContent = `${p.name} — ${tr("only", "सिर्फ़")} ${fmtQty(p.stock_qty)} ${tr("left", "बचे")}`;
         chips.appendChild(c);
       });
       box.appendChild(chips);
     }
     if (!any) {
-      box.innerHTML = `<div class="offline-note" style="margin-top:0">🟢 ${isHi() ? 'Sab clear — koi due nahi, stock theek hai.' : 'Sab clear — koi due nahi, stock theek hai.'}</div>`;
+      box.innerHTML = `<div class="offline-note" style="margin-top:0">🟢 ${tr("All clear — nothing due, stock is fine.", "Sab clear — koi due nahi, stock theek hai.")}</div>`;
     }
   } catch (e) {
-    box.innerHTML = `<div class="hint">${isHi() ? 'Alerts nahi aaye.' : 'Alerts could not load.'}</div>`;
+    box.innerHTML = `<div class="hint">${tr("Alerts could not load.", "Alerts लोड नहीं हुए।")}</div>`;
   }
 }
 
@@ -2712,13 +3178,13 @@ async function loadAlerts() {
 // Poora hisab data se khud banta hai — koi manual entry nahi hai.
 // =====================================================================
 function dayEndRowsHtml(r) {
-  const collLine = `${fmt(r.collections.total)} <span style="color:var(--muted)">(Cash ${fmt(r.collections.cash)} · UPI ${fmt(r.collections.upi)}${r.collections.other > 0 ? ' · ' + (isHi() ? 'doosra' : 'Other') + ' ' + fmt(r.collections.other) : ''})</span>`;
-  return `<div class="sum-row"><span>🧾 ${isHi() ? 'Bikri' : 'Sale'} (${r.sales.bills_count} ${isHi() ? 'bill' : 'bills'})</span><b>${fmt(r.sales.total)}</b></div>` +
-    (r.sales.returns_total > 0 ? `<div class="sum-row"><span>↩️ ${isHi() ? 'Wapsi (returns)' : 'Returns'}</span><span>−${fmt(r.sales.returns_total)}</span></div>` : '') +
-    `<div class="sum-row"><span>💵 ${isHi() ? 'Vasooli (aaj mili)' : 'Collections (received today)'}</span><span>${collLine}</span></div>` +
-    `<div class="sum-row"><span>📕 ${isHi() ? 'Naya udhaar diya' : 'New credit given'}</span><span>${fmt(r.new_credit_given)}</span></div>` +
-    `<div class="sum-row"><span>💸 ${isHi() ? 'Kharcha' : 'Expenses'} (${r.expenses.count})</span><span>${fmt(r.expenses.total)}</span></div>` +
-    `<div class="sum-row"><span>🚚 ${isHi() ? 'Supplier ko diya' : 'Paid to suppliers'}</span><span>${fmt(r.supplier_payments.total)}</span></div>`;
+  const collLine = `${fmt(r.collections.total)} <span style="color:var(--muted)">(Cash ${fmt(r.collections.cash)} · UPI ${fmt(r.collections.upi)}${r.collections.other > 0 ? ' · ' + (tr("Other", "अन्य")) + ' ' + fmt(r.collections.other) : ''})</span>`;
+  return `<div class="sum-row"><span>🧾 ${tr("Sale", "बिक्री")} (${r.sales.bills_count} ${tr("bills", "बिल")})</span><b>${fmt(r.sales.total)}</b></div>` +
+    (r.sales.returns_total > 0 ? `<div class="sum-row"><span>↩️ ${tr("Returns", "वापसी")}</span><span>−${fmt(r.sales.returns_total)}</span></div>` : '') +
+    `<div class="sum-row"><span>💵 ${tr("Collections (received today)", "वसूली (आज मिली)")}</span><span>${collLine}</span></div>` +
+    `<div class="sum-row"><span>📕 ${tr("New credit given", "नया उधार दिया")}</span><span>${fmt(r.new_credit_given)}</span></div>` +
+    `<div class="sum-row"><span>💸 ${tr("Expenses", "खर्चा")} (${r.expenses.count})</span><span>${fmt(r.expenses.total)}</span></div>` +
+    `<div class="sum-row"><span>🚚 ${tr("Paid to suppliers", "सप्लायर को दिया")}</span><span>${fmt(r.supplier_payments.total)}</span></div>`;
 }
 async function loadDayEndDash() {
   const card = $('dayEndDashCard');
@@ -2729,7 +3195,7 @@ async function loadDayEndDash() {
     const r = await api('GET', '/api/reports/day-end');
     $('dayEndDashBody').innerHTML = dayEndRowsHtml(r);
   } catch (e) {
-    $('dayEndDashBody').innerHTML = `<div class="hint">${isHi() ? 'Day-end report nahi aayi.' : 'Day-end report could not load.'}</div>`;
+    $('dayEndDashBody').innerHTML = `<div class="hint">${tr("Day-end report could not load.", "Day-end report लोड नहीं हुई।")}</div>`;
   }
 }
 $('dayEndDashWa').addEventListener('click', async () => {
@@ -2764,19 +3230,19 @@ async function loadDashboardFinance() {
   if (!me) return;
   if (me.user.role !== 'owner') {
     $('dashExpVal').textContent = '🔒';
-    $('dashExpSub').textContent = isHi() ? 'सिर्फ़ owner के लिए' : 'Sirf owner ke liye';
+    $('dashExpSub').textContent = tr("Owner only", "सिर्फ़ owner के लिए");
     $('dashProfitVal').textContent = '🔒';
-    $('dashProfitSub').textContent = isHi() ? 'सिर्फ़ owner के लिए' : 'Sirf owner ke liye';
+    $('dashProfitSub').textContent = tr("Owner only", "सिर्फ़ owner के लिए");
     return;
   }
   try {
     const f = await api('GET', '/api/dashboard-finance');
     $('dashExpVal').textContent = fmt(f.todays_expense);
-    $('dashExpSub').textContent = isHi() ? 'आज के सारे खर्चे' : "All of today's expenses";
+    $('dashExpSub').textContent = tr("All of today's expenses", "आज के सारे खर्चे");
     const pv = $('dashProfitVal');
     pv.textContent = fmt(f.todays_net_profit);
     pv.style.color = f.todays_net_profit < 0 ? 'var(--red)' : 'var(--green)';
-    $('dashProfitSub').textContent = isHi() ? 'बिक्री − बिके माल की लागत − खर्चा' : 'Sale − cost of goods sold − expenses';
+    $('dashProfitSub').textContent = tr("Sale − cost of goods sold − expenses", "बिक्री − बिके माल की लागत − खर्चा");
   } catch (e) { /* best-effort card */ }
 }
 
@@ -2786,7 +3252,7 @@ const EXP_CATS = {
   Transport: ['Transport', 'आना-जाना / भाड़ा'], Packing: ['Packing', 'पैकिंग'], Food: ['Food', 'खाना-पीना'],
   Maintenance: ['Maintenance', 'मरम्मत'], Other: ['Other', 'अन्य']
 };
-function catLabel(key) { const c = EXP_CATS[key]; return c ? (isHi() ? c[1] : c[0]) : key; }
+function catLabel(key) { const c = EXP_CATS[key]; return c ? tr(c[0], c[1]) : key; }
 let expYM = null; // 'YYYY-MM' being viewed
 function ymNow() { return new Date().toISOString().slice(0, 7); }
 function ymRange(ym) {
@@ -2816,7 +3282,7 @@ async function loadExpenses() {
     catBox.innerHTML = '';
     const cats = Object.keys(byCat).sort((a, b) => byCat[b] - byCat[a]);
     if (!cats.length) {
-      catBox.innerHTML = `<div class="hint">${isHi() ? 'इस महीने कोई खर्चा नहीं।' : 'No expenses this month.'}</div>`;
+      catBox.innerHTML = `<div class="hint">${tr("No expenses this month.", "इस महीने कोई खर्चा नहीं।")}</div>`;
     } else {
       const max = Math.max(...cats.map((c) => byCat[c]));
       cats.forEach((c) => {
@@ -2831,22 +3297,22 @@ async function loadExpenses() {
     tb.innerHTML = '';
     $('expEmpty').classList.toggle('hidden', r.expenses.length > 0);
     r.expenses.forEach((e) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${esc(e.date)}</td><td><b></b><div style="color:var(--muted);font-size:12px"></div></td><td><span class="tag tag-part"></span></td><td>${esc(e.payment_mode)}</td><td><b>${fmt(e.amount)}</b></td><td style="white-space:nowrap"></td>`;
-      tr.children[1].querySelector('b').textContent = e.title;
-      tr.children[1].querySelector('div').textContent = e.notes || '';
-      tr.children[2].querySelector('.tag').textContent = catLabel(e.category);
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${esc(e.date)}</td><td><b></b><div style="color:var(--muted);font-size:12px"></div></td><td><span class="tag tag-part"></span></td><td>${esc(e.payment_mode)}</td><td><b>${fmt(e.amount)}</b></td><td style="white-space:nowrap"></td>`;
+      row.children[1].querySelector('b').textContent = e.title;
+      row.children[1].querySelector('div').textContent = e.notes || '';
+      row.children[2].querySelector('.tag').textContent = catLabel(e.category);
       const edit = document.createElement('button');
-      edit.className = 'btn btn-ghost btn-sm'; edit.textContent = isHi() ? 'बदलो' : 'Edit';
+      edit.className = 'btn btn-ghost btn-sm'; edit.textContent = tr("Edit", "बदलो");
       edit.addEventListener('click', () => openExpenseForm(e));
       const del = document.createElement('button');
-      del.className = 'btn btn-danger btn-sm'; del.textContent = isHi() ? 'हटाओ' : 'Delete';
+      del.className = 'btn btn-danger btn-sm'; del.textContent = tr("Delete", "हटाओ");
       del.addEventListener('click', async () => {
-        if (!confirm((isHi() ? 'खर्चा हटाना है: ' : 'Delete expense: ') + e.title + '?')) return;
+        if (!confirm((tr("Delete expense: ", "खर्चा हटाना है: ")) + e.title + '?')) return;
         try { await api('DELETE', '/api/expenses/' + e.id); loadExpenses(); } catch (err) { showErr('expErr', stage4Friendly(err)); }
       });
-      tr.children[5].append(edit, del);
-      tb.appendChild(tr);
+      row.children[5].append(edit, del);
+      tb.appendChild(row);
     });
   } catch (e) { showErr('expErr', stage4Friendly(e)); }
 }
@@ -2854,7 +3320,7 @@ function openExpenseForm(e) {
   hideErr('efErr');
   $('expenseFormCard').classList.remove('hidden');
   $('efId').value = e ? e.id : '';
-  $('efTitle').textContent = e ? (isHi() ? 'खर्चा बदलो' : 'Edit expense') : (isHi() ? 'खर्चा जोड़ो' : 'Add expense');
+  $('efTitle').textContent = e ? (tr("Edit expense", "खर्चा बदलो")) : (tr("Add expense", "खर्चा जोड़ो"));
   $('efName').value = e ? e.title : '';
   $('efCategory').value = e ? e.category : 'Other';
   $('efAmount').value = e ? e.amount : '';
@@ -2918,7 +3384,7 @@ async function loadReports() {
       api('GET', '/api/reports/pending')
     ]);
     $('repSale').textContent = fmt(sum.sale_total);
-    $('repBills').textContent = `${sum.bills_count} ${isHi() ? 'बिल' : 'bills'}`;
+    $('repBills').textContent = `${sum.bills_count} ${tr("bills", "बिल")}`;
     const gv = $('repGross');
     gv.textContent = fmt(sum.gross_profit);
     gv.style.color = sum.gross_profit < 0 ? 'var(--red)' : 'var(--ink)';
@@ -2935,7 +3401,7 @@ async function loadReports() {
     cb.innerHTML = '';
     const catArr = Array.isArray(cats) ? cats : [];
     if (!catArr.length) {
-      cb.innerHTML = `<div class="hint">${isHi() ? 'इस समय में कोई खर्चा नहीं।' : 'No expenses in this period.'}</div>`;
+      cb.innerHTML = `<div class="hint">${tr("No expenses in this period.", "इस समय में कोई खर्चा नहीं।")}</div>`;
     } else {
       const max = Math.max(...catArr.map((c) => Number(c.total)));
       catArr.forEach((c) => {
@@ -2963,15 +3429,15 @@ async function loadReports() {
         if (withRemind && r.id) {
           const rem = document.createElement('button');
           rem.className = 'btn btn-wa btn-sm';
-          rem.textContent = isHi() ? 'रिमाइंडर' : 'Remind';
+          rem.textContent = tr("Remind", "रिमाइंडर");
           rem.addEventListener('click', () => sendReminderWhatsApp(r.id, 'repErr', () => loadReports()));
           row.appendChild(rem);
         }
         box.appendChild(row);
       });
     };
-    fillPend('repPendCust', pend.customers || [], isHi() ? 'किसी ग्राहक का उधार बाकी नहीं है।' : 'No customer has pending udhaar.', true);
-    fillPend('repPendSup', pend.suppliers || [], isHi() ? 'किसी सप्लायर को कुछ देना बाकी नहीं है।' : 'Nothing pending to any supplier.');
+    fillPend('repPendCust', pend.customers || [], tr("No customer has pending credit.", "किसी ग्राहक का उधार बाकी नहीं है।"), true);
+    fillPend('repPendSup', pend.suppliers || [], tr("Nothing pending to any supplier.", "किसी सप्लायर को कुछ देना बाकी नहीं है।"));
     loadMonthlyReport();
     loadGstReport();
     loadGstr1();
@@ -2994,7 +3460,7 @@ document.querySelectorAll('#repPresets button').forEach((b) => b.addEventListene
 }));
 $('repApply').addEventListener('click', () => {
   const from = $('repFrom').value, to = $('repTo').value;
-  if (!from || !to || from > to) { showErr('repErr', isHi() ? 'सही तारीख़ चुनो — From, To से पहले हो।' : 'Pick valid dates — From must be before To.'); return; }
+  if (!from || !to || from > to) { showErr('repErr', tr("Pick valid dates — From must be before To.", "सही तारीख़ चुनो — From, To से पहले हो।")); return; }
   repCustomRange = { from, to };
   loadReports();
 });
@@ -3013,9 +3479,9 @@ async function loadMonthlyReport() {
     lastMonthlyReport = r;
     const s = r.summary;
     $('repMonthlySummary').innerHTML =
-      `<div class="sum-row"><span>${isHi() ? 'बिक्री' : 'Sale'} (${s.bills_count} ${isHi() ? 'बिल' : 'bills'})</span><b>${fmt(s.sale_total)}</b></div>` +
-      `<div class="sum-row"><span>${isHi() ? 'खर्चा' : 'Expenses'}</span><span>${fmt(s.expenses_total)}</span></div>` +
-      `<div class="sum-row total"><span>${isHi() ? 'असली मुनाफ़ा' : 'Net Profit'}</span><span style="color:${s.net_profit < 0 ? 'var(--red)' : 'var(--green)'}">${fmt(s.net_profit)}</span></div>`;
+      `<div class="sum-row"><span>${tr("Sale", "बिक्री")} (${s.bills_count} ${tr("bills", "बिल")})</span><b>${fmt(s.sale_total)}</b></div>` +
+      `<div class="sum-row"><span>${tr("Expenses", "खर्चा")}</span><span>${fmt(s.expenses_total)}</span></div>` +
+      `<div class="sum-row total"><span>${tr("Net Profit", "असली मुनाफ़ा")}</span><span style="color:${s.net_profit < 0 ? 'var(--red)' : 'var(--green)'}">${fmt(s.net_profit)}</span></div>`;
     const tb = $('repMonthlyBody');
     tb.innerHTML = '';
     [...r.months].reverse().forEach((m) => {
@@ -3025,7 +3491,7 @@ async function loadMonthlyReport() {
       tb.appendChild(tr);
     });
   } catch (e) {
-    $('repMonthlySummary').innerHTML = `<div class="hint">${isHi() ? 'महीने की रिपोर्ट नहीं आई।' : 'Monthly report could not load.'}</div>`;
+    $('repMonthlySummary').innerHTML = `<div class="hint">${tr("Monthly report could not load.", "महीने की रिपोर्ट नहीं आई।")}</div>`;
   }
 }
 $('repMonth').addEventListener('change', loadMonthlyReport);
@@ -3039,28 +3505,28 @@ async function loadGstReport() {
     const r = await api('GET', '/api/reports/gst?month=' + encodeURIComponent(inp.value));
     lastGstReport = r;
     if (!r.gst_enabled) {
-      box.innerHTML = `<div class="offline-note" style="margin-top:0">ℹ️ ${isHi() ? 'इस बिज़नेस के लिए GST बंद (OFF) है — इसलिए GST रिपोर्ट लागू नहीं है। GST चालू करना हो तो Settings में जाओ।' : 'GST is OFF for this business — the GST report does not apply. To turn it on, go to Settings.'}</div>`;
+      box.innerHTML = `<div class="offline-note" style="margin-top:0">ℹ️ ${tr("GST is OFF for this business — the GST report does not apply. To turn it on, go to Settings.", "इस बिज़नेस के लिए GST बंद (OFF) है — इसलिए GST रिपोर्ट लागू नहीं है। GST चालू करना हो तो Settings में जाओ।")}</div>`;
       return;
     }
     let html =
-      `<div class="sum-row"><span>${isHi() ? 'कुल बिक्री' : 'Total sale'} (${r.bills_count} ${isHi() ? 'बिल' : 'bills'})</span><b>${fmt(r.total_sales)}</b></div>` +
-      `<div class="sum-row"><span>${isHi() ? 'Taxable value (GST हटाकर)' : 'Taxable value (without GST)'}</span><span>${fmt(r.taxable_value)}</span></div>` +
-      `<div class="sum-row"><span>${isHi() ? 'Output GST (बिक्री पर)' : 'Output GST (on sales)'}</span><b>${fmt(r.output_gst)}</b></div>` +
+      `<div class="sum-row"><span>${tr("Total sale", "कुल बिक्री")} (${r.bills_count} ${tr("bills", "बिल")})</span><b>${fmt(r.total_sales)}</b></div>` +
+      `<div class="sum-row"><span>${tr("Taxable value (without GST)", "Taxable value (GST हटाकर)")}</span><span>${fmt(r.taxable_value)}</span></div>` +
+      `<div class="sum-row"><span>${tr("Output GST (on sales)", "Output GST (बिक्री पर)")}</span><b>${fmt(r.output_gst)}</b></div>` +
       `<div class="sum-row"><span>· CGST</span><span>${fmt(r.cgst)}</span></div>` +
       `<div class="sum-row"><span>· SGST</span><span>${fmt(r.sgst)}</span></div>` +
-      (r.returns_count > 0 ? `<div class="sum-row"><span>↩️ ${isHi() ? 'Wapsi / Credit Notes' : 'Returns / Credit Notes'} (${r.returns_count})</span><span>−${fmt(r.returns_total)} · GST −${fmt(r.returns_gst)}</span></div><div class="hint">${isHi() ? 'Upar wali Output GST aur taxable value me is mahine ki wapsi pehle se ghata hui hai (credit note usi mahine me ginta hai jis mahine wapsi hui).' : 'The Output GST and taxable value above are already net of this month\'s returns (a credit note counts in the month the return happened).'}</div>` : '') +
-      `<div class="sum-row"><span>${isHi() ? 'Input GST (खरीद पर, सामान के GST % से गिना)' : 'Input GST (on purchases, from product GST %)'}</span><span>${fmt(r.input_gst)}</span></div>` +
-      `<div class="sum-row total"><span>${isHi() ? 'देना GST (Output − Input)' : 'Net GST payable (Output − Input)'}</span><span>${fmt(r.net_gst_payable)}</span></div>`;
+      (r.returns_count > 0 ? `<div class="sum-row"><span>↩️ ${tr("Returns / Credit Notes", "वापसी / Credit Notes")} (${r.returns_count})</span><span>−${fmt(r.returns_total)} · GST −${fmt(r.returns_gst)}</span></div><div class="hint">${tr("The Output GST and taxable value above are already net of this month's returns (a credit note counts in the month the return happened).", "ऊपर की Output GST और taxable value में इस महीने की वापसी पहले से घटी हुई है (credit note उसी महीने में गिना जाता है जिसमें वापसी हुई)।")}</div>` : '') +
+      `<div class="sum-row"><span>${tr("Input GST (on purchases, from product GST %)", "Input GST (खरीद पर, सामान के GST % से गिना)")}</span><span>${fmt(r.input_gst)}</span></div>` +
+      `<div class="sum-row total"><span>${tr("Net GST payable (Output − Input)", "देना GST (Output − Input)")}</span><span>${fmt(r.net_gst_payable)}</span></div>`;
     if (r.by_rate.length) {
-      html += `<table style="margin-top:10px"><thead><tr><th>GST %</th><th>${isHi() ? 'रकम (GST सहित)' : 'Amount (incl. GST)'}</th><th>Taxable</th><th>GST</th><th>CGST</th><th>SGST</th></tr></thead><tbody>` +
+      html += `<table style="margin-top:10px"><thead><tr><th>GST %</th><th>${tr("Amount (incl. GST)", "रकम (GST सहित)")}</th><th>Taxable</th><th>GST</th><th>CGST</th><th>SGST</th></tr></thead><tbody>` +
         r.by_rate.map((x) => `<tr><td>${Number(x.rate)}%</td><td>${fmt(x.amount)}</td><td>${fmt(x.taxable_value)}</td><td>${fmt(x.gst)}</td><td>${fmt(x.cgst)}</td><td>${fmt(x.sgst)}</td></tr>`).join('') +
         `</tbody></table>`;
     } else {
-      html += `<div class="hint" style="margin-top:8px">${isHi() ? 'इस महीने कोई GST बिल नहीं बना।' : 'No GST bills in this month.'}</div>`;
+      html += `<div class="hint" style="margin-top:8px">${tr("No GST bills in this month.", "इस महीने कोई GST बिल नहीं बना।")}</div>`;
     }
     box.innerHTML = html;
   } catch (e) {
-    box.innerHTML = `<div class="hint">${isHi() ? 'GST रिपोर्ट नहीं आई।' : 'GST report could not load.'}</div>`;
+    box.innerHTML = `<div class="hint">${tr("GST report could not load.", "GST रिपोर्ट नहीं आई।")}</div>`;
   }
 }
 $('gstMonth').addEventListener('change', loadGstReport);
@@ -3078,43 +3544,43 @@ async function loadGstr1() {
   try {
     const r = await api('GET', '/api/reports/gstr1?month=' + encodeURIComponent(inp.value));
     if (!r.gst_enabled) {
-      box.innerHTML = `<div class="offline-note" style="margin-top:0">ℹ️ ${isHi() ? 'इस बिज़नेस के लिए GST बंद (OFF) है — GSTR-1 लागू नहीं है।' : 'GST is OFF for this business — GSTR-1 does not apply.'}</div>`;
+      box.innerHTML = `<div class="offline-note" style="margin-top:0">ℹ️ ${tr("GST is OFF for this business — GSTR-1 does not apply.", "इस बिज़नेस के लिए GST बंद (OFF) है — GSTR-1 लागू नहीं है।")}</div>`;
       return;
     }
     let html =
-      `<div class="sum-row"><span>${isHi() ? 'कुल बिक्री' : 'Total sale'} (${r.bills_count} ${isHi() ? 'बिल' : 'bills'})</span><b>${fmt(r.total_sales)}</b></div>` +
-      `<div class="sum-row"><span>${isHi() ? 'Taxable value' : 'Taxable value'}</span><span>${fmt(r.taxable_value)}</span></div>` +
-      `<div class="sum-row"><span>${isHi() ? 'Output GST (GST report se mila hua)' : 'Output GST (matches the GST report)'}</span><b>${fmt(r.output_gst)}</b></div>` +
-      `<div class="sum-row"><span>· B2B (${r.b2b.invoices} ${isHi() ? 'बिल' : 'bills'} — ${isHi() ? 'जिन ग्राहकों का GSTIN hai' : 'customers with GSTIN'})</span><span>${fmt(r.b2b.value)} · GST ${fmt(r.b2b.tax)}</span></div>` +
-      `<div class="sum-row"><span>· B2C (${r.b2c.invoices} ${isHi() ? 'बिल' : 'bills'})</span><span>${fmt(r.b2c.value)} · GST ${fmt(r.b2c.tax)}</span></div>`;
+      `<div class="sum-row"><span>${tr("Total sale", "कुल बिक्री")} (${r.bills_count} ${tr("bills", "बिल")})</span><b>${fmt(r.total_sales)}</b></div>` +
+      `<div class="sum-row"><span>${tr("Taxable value", "Taxable value")}</span><span>${fmt(r.taxable_value)}</span></div>` +
+      `<div class="sum-row"><span>${tr("Output GST (matches the GST report)", "Output GST (GST report से मिलता है)")}</span><b>${fmt(r.output_gst)}</b></div>` +
+      `<div class="sum-row"><span>· B2B (${r.b2b.invoices} ${tr("bills", "बिल")} — ${tr("customers with GSTIN", "जिन ग्राहकों का GSTIN hai")})</span><span>${fmt(r.b2b.value)} · GST ${fmt(r.b2b.tax)}</span></div>` +
+      `<div class="sum-row"><span>· B2C (${r.b2c.invoices} ${tr("bills", "बिल")})</span><span>${fmt(r.b2c.value)} · GST ${fmt(r.b2c.tax)}</span></div>`;
     if (r.credit_notes && r.credit_notes.count > 0) {
       const cn = r.credit_notes;
-      html += `<div class="sum-row"><span>↩️ ${isHi() ? 'Credit Notes (wapsi)' : 'Credit Notes (returns)'} (${cn.count})</span><span>−${fmt(cn.total_value)} · GST −${fmt(cn.tax)}</span></div>` +
-        `<div class="hint">${isHi() ? 'Upar wali taxable value aur Output GST in credit notes ko ghata kar hai. Portal file (JSON) me ye CDNR/CDNUR section me jate hain, CSV register me bhi alag section me dikhte hain.' : 'The taxable value and Output GST above are net of these credit notes. In the portal JSON they appear in the CDNR/CDNUR sections, and in the CSV register as a labeled section.'}</div>` +
-        `<table style="margin-top:8px"><thead><tr><th>Credit Note</th><th>${isHi() ? 'तारीख़' : 'Date'}</th><th>${isHi() ? 'असली बिल' : 'Original Bill'}</th><th>Taxable</th><th>GST</th><th>${isHi() ? 'कुल' : 'Total'}</th></tr></thead><tbody>` +
+      html += `<div class="sum-row"><span>↩️ ${tr("Credit Notes (returns)", "Credit Notes (वापसी)")} (${cn.count})</span><span>−${fmt(cn.total_value)} · GST −${fmt(cn.tax)}</span></div>` +
+        `<div class="hint">${tr("The taxable value and Output GST above are net of these credit notes. In the portal JSON they appear in the CDNR/CDNUR sections, and in the CSV register as a labeled section.", "ऊपर की taxable value और Output GST इन credit notes को घटाकर है। Portal JSON में ये CDNR/CDNUR section में, और CSV register में अलग section में आते हैं।")}</div>` +
+        `<table style="margin-top:8px"><thead><tr><th>Credit Note</th><th>${tr("Date", "तारीख़")}</th><th>${tr("Original Bill", "असली बिल")}</th><th>Taxable</th><th>GST</th><th>${tr("Total", "कुल")}</th></tr></thead><tbody>` +
         cn.notes.map((n) => `<tr><td>CN${n.return_no}</td><td>${esc(n.date)}</td><td>#${n.bill_no}</td><td>${fmt(n.taxable_value)}</td><td>${fmt(n.gst_amount)}</td><td>${fmt(n.total)}</td></tr>`).join('') +
         `</tbody></table>`;
     }
     if (r.hsn_summary && r.hsn_summary.length) {
-      html += `<table style="margin-top:10px"><thead><tr><th>HSN</th><th>${isHi() ? 'सामान' : 'Item'}</th><th>Qty</th><th>Taxable</th><th>GST</th></tr></thead><tbody>` +
+      html += `<table style="margin-top:10px"><thead><tr><th>HSN</th><th>${tr("Item", "सामान")}</th><th>Qty</th><th>Taxable</th><th>GST</th></tr></thead><tbody>` +
         r.hsn_summary.map((h) => `<tr><td>${esc(h.hsn_code || '—')}</td><td>${esc(h.description || '')}</td><td>${fmtQty(h.qty)}</td><td>${fmt(h.taxable_value)}</td><td>${fmt(h.total_tax)}</td></tr>`).join('') +
         `</tbody></table>`;
     }
     const rd = r.readiness || {};
     const warns = [];
-    if (rd.business_gstin_missing) warns.push(isHi() ? 'तुम्हारा GSTIN Settings me nahi bhara hai — file me seller GSTIN khaali jayega.' : 'Your GSTIN is not set in Settings — the file will have a blank seller GSTIN.');
-    if (rd.products_missing_hsn > 0) warns.push(isHi() ? `${rd.products_missing_hsn} product(s) par HSN code nahi hai${rd.products_missing_hsn_names && rd.products_missing_hsn_names.length ? ': ' + rd.products_missing_hsn_names.join(', ') : ''} — portal par HSN zaroori hota hai, Products me jaakar bharo.` : `${rd.products_missing_hsn} product(s) have no HSN code — add them in Products before filing.`);
-    if (rd.customers_invoiced_without_gstin > 0) warns.push(isHi() ? `Is mahine ke ${rd.customers_invoiced_without_gstin} graahak bina GSTIN ke B2C me gaye hain — koi business customer hai to uska GSTIN Customers me bharo, woh B2B ho jayega.` : `${rd.customers_invoiced_without_gstin} customer(s) this month went to B2C without a GSTIN — add GSTINs in Customers for business buyers.`);
-    if (rd.customers_with_invalid_gstin > 0) warns.push(isHi() ? `${rd.customers_with_invalid_gstin} graahak ka GSTIN format galat lag raha hai — woh bhi B2C me gaya hai, GSTIN check karo.` : `${rd.customers_with_invalid_gstin} customer(s) have a GSTIN that looks invalid — they were counted as B2C. Check the GSTIN.`);
+    if (rd.business_gstin_missing) warns.push(tr("Your GSTIN is not set in Settings — the file will have a blank seller GSTIN.", "तुम्हारा GSTIN Settings me nahi bhara hai — file me seller GSTIN khaali jayega."));
+    if (rd.products_missing_hsn > 0) warns.push(tr(`${rd.products_missing_hsn} product(s) have no HSN code — add them in Products before filing.`, `${rd.products_missing_hsn} product(s) पर HSN code नहीं है${rd.products_missing_hsn_names && rd.products_missing_hsn_names.length ? ': ' + rd.products_missing_hsn_names.join(', ') : ''} — filing से पहले Products में भरो।`, `${rd.products_missing_hsn} product(s) par HSN code nahi hai${rd.products_missing_hsn_names && rd.products_missing_hsn_names.length ? ': ' + rd.products_missing_hsn_names.join(', ') : ''} — filing se pehle Products me bharo.`));
+    if (rd.customers_invoiced_without_gstin > 0) warns.push(tr(`${rd.customers_invoiced_without_gstin} customer(s) this month went to B2C without a GSTIN — add GSTINs in Customers for business buyers.`, `इस महीने ${rd.customers_invoiced_without_gstin} ग्राहक बिना GSTIN के B2C में गए — business ग्राहक है तो उसका GSTIN Customers में भरो, वो B2B हो जाएगा।`, `Is mahine ${rd.customers_invoiced_without_gstin} customer bina GSTIN ke B2C me gaye — business customer hai to uska GSTIN Customers me bharo, woh B2B ho jayega.`));
+    if (rd.customers_with_invalid_gstin > 0) warns.push(tr(`${rd.customers_with_invalid_gstin} customer(s) have a GSTIN that looks invalid — they were counted as B2C. Check the GSTIN.`, `${rd.customers_with_invalid_gstin} ग्राहक का GSTIN गलत लग रहा है — वो B2C में गिने गए। GSTIN जाँचो।`, `${rd.customers_with_invalid_gstin} customer ka GSTIN galat lag raha hai — woh B2C me gine gaye. GSTIN check karo.`));
     if (warns.length) {
       html += `<div class="offline-note" style="margin-top:10px">⚠️ ${warns.join('<br>⚠️ ')}</div>`;
     } else {
-      html += `<div class="hint" style="margin-top:10px">✅ ${isHi() ? 'Sab ready hai — GSTIN aur HSN pure hain.' : 'All ready — GSTIN and HSN are complete.'}</div>`;
+      html += `<div class="hint" style="margin-top:10px">✅ ${tr("All ready — GSTIN and HSN are complete.", "सब तैयार — GSTIN और HSN पूरे हैं।")}</div>`;
     }
     html += `<div class="hint" style="margin-top:8px">${esc(r.note || '')}</div>`;
     box.innerHTML = html;
   } catch (e) {
-    box.innerHTML = `<div class="hint">${isHi() ? 'GSTR-1 नहीं आया।' : 'GSTR-1 could not load.'}</div>`;
+    box.innerHTML = `<div class="hint">${tr("GSTR-1 could not load.", "GSTR-1 नहीं आया।")}</div>`;
   }
 }
 $('gstr1Month').addEventListener('change', loadGstr1);
@@ -3135,14 +3601,14 @@ $('gstPrintBtn').addEventListener('click', async () => {
 function printGstReport() {
   const r = lastGstReport;
   if (!r) return;
-  $('prBiz').textContent = (me && me.business.name) || 'Business OS';
-  $('prTitle').textContent = (isHi() ? 'GST रिपोर्ट' : 'GST Report') + ' — ' + monthLabel(r.month);
+  $('prBiz').textContent = (me && me.business.name) || 'BizYour';
+  $('prTitle').textContent = (tr("GST Report", "GST रिपोर्ट")) + ' — ' + monthLabel(r.month);
   $('prSub').textContent = r.gst_enabled
     ? `${r.from} → ${r.to}${r.gstin ? ' · GSTIN: ' + r.gstin : ''}`
     : `${r.from} → ${r.to}`;
   let html = '';
   if (!r.gst_enabled) {
-    html = `<p style="font-size:14px">GST is OFF for this business — GST report does not apply. / इस बिज़नेस के लिए GST बंद है।</p>`;
+    html = `<p style="font-size:14px">${tr('GST is OFF for this business — the GST report does not apply.', 'इस बिज़नेस के लिए GST बंद है — GST report लागू नहीं।', 'Is business ke liye GST OFF hai — GST report laagu nahi.')}</p>`;
   } else {
     html = `<table><thead><tr><th>Detail</th><th class="pb-num">Amount ₹</th></tr></thead><tbody>` +
       `<tr><td>Total sale (${r.bills_count} bills)</td><td class="pb-num">${fmt(r.total_sales)}</td></tr>` +
@@ -3168,6 +3634,11 @@ function printGstReport() {
 }
 
 boot();
+
+// ---------- PWA: register the service worker (progressive enhancement) ----------
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}
 
 // =====================================================================
 // ---------- SaaS Stage 3: Bharosa wala hisa (frontend) ----------
@@ -3218,35 +3689,33 @@ async function loadBackups() {
     const r = await api('GET', '/api/backups');
     const info = $('backupAutoInfo');
     if (info) {
-      info.textContent = isHi()
-        ? `ऑटो-बैकअप चालू है — आख़री ${r.auto_backup.retention} snapshots रहते हैं।${r.auto_backup.last_auto_at ? ' आख़री auto-backup: ' + r.auto_backup.last_auto_at : ' अभी कोई auto-backup नहीं बना।'}`
-        : `Auto-backup is ON — the last ${r.auto_backup.retention} snapshots are kept.${r.auto_backup.last_auto_at ? ' Last auto-backup: ' + r.auto_backup.last_auto_at : ' No auto-backup yet.'}`;
+      info.textContent = tr(`Auto-backup is ON — the last ${r.auto_backup.retention} snapshots are kept.${r.auto_backup.last_auto_at ? ' Last auto-backup: ' + r.auto_backup.last_auto_at : ' No auto-backup yet.'}`, `ऑटो-बैकअप चालू है — आख़री ${r.auto_backup.retention} snapshots रहते हैं।${r.auto_backup.last_auto_at ? ' आख़री auto-backup: ' + r.auto_backup.last_auto_at : ' अभी कोई auto-backup नहीं बना।'}`, `Auto-backup chalu hai — aakhri ${r.auto_backup.retention} snapshots rehte hain.${r.auto_backup.last_auto_at ? ' Aakhri auto-backup: ' + r.auto_backup.last_auto_at : ' Abhi koi auto-backup nahi bana.'}`);
     }
     list.innerHTML = '';
     if (!r.snapshots.length) {
-      list.innerHTML = `<div class="hint">${isHi() ? 'अभी कोई snapshot नहीं।' : 'No snapshots yet.'}</div>`;
+      list.innerHTML = `<div class="hint">${tr("No snapshots yet.", "अभी कोई snapshot नहीं।")}</div>`;
       return;
     }
     const tbl = document.createElement('table');
-    tbl.innerHTML = `<thead><tr><th>${isHi() ? 'समय' : 'Time'}</th><th>${isHi() ? 'प्रकार' : 'Kind'}</th><th>${isHi() ? 'साइज़' : 'Size'}</th><th></th></tr></thead>`;
+    tbl.innerHTML = `<thead><tr><th>${tr("Time", "समय")}</th><th>${tr("Kind", "प्रकार")}</th><th>${tr("Size", "साइज़")}</th><th></th></tr></thead>`;
     const tb = document.createElement('tbody');
     r.snapshots.forEach((s) => {
-      const tr = document.createElement('tr');
-      const kindLbl = s.kind === 'auto' ? (isHi() ? 'ऑटो' : 'Auto') : s.kind === 'manual' ? (isHi() ? 'मैन्युअल' : 'Manual') : (isHi() ? 'Restore से पहले' : 'Pre-restore');
-      tr.innerHTML = `<td>${esc(s.created_at)}</td><td>${kindLbl}</td><td>${Math.max(1, Math.round(s.size / 1024))} KB</td><td style="white-space:nowrap"></td>`;
+      const row = document.createElement('tr');
+      const kindLbl = s.kind === 'auto' ? (tr("Auto", "ऑटो")) : s.kind === 'manual' ? (tr("Manual", "मैन्युअल")) : (tr("Pre-restore", "Restore से पहले"));
+      row.innerHTML = `<td>${esc(s.created_at)}</td><td>${kindLbl}</td><td>${Math.max(1, Math.round(s.size / 1024))} KB</td><td style="white-space:nowrap"></td>`;
       const dl = document.createElement('button');
       dl.className = 'btn btn-soft btn-sm'; dl.type = 'button'; dl.textContent = '⬇';
-      dl.title = isHi() ? 'डाउनलोड' : 'Download';
+      dl.title = tr("Download", "डाउनलोड");
       dl.addEventListener('click', async () => {
         try { await downloadAuthed('/api/backups/' + s.id + '/download', 'backup-' + s.id + '.json'); }
         catch (e) { showErr('backupErr', friendly(e)); }
       });
       const rs = document.createElement('button');
       rs.className = 'btn btn-soft btn-sm'; rs.type = 'button';
-      rs.textContent = isHi() ? 'Restore' : 'Restore';
+      rs.textContent = tr("Restore", "Restore");
       rs.addEventListener('click', () => restoreBackup(s));
-      tr.children[3].append(dl, document.createTextNode(' '), rs);
-      tb.appendChild(tr);
+      row.children[3].append(dl, document.createTextNode(' '), rs);
+      tb.appendChild(row);
     });
     tbl.appendChild(tb);
     list.appendChild(tbl);
@@ -3254,14 +3723,12 @@ async function loadBackups() {
 }
 
 async function restoreBackup(s) {
-  const msg = isHi()
-    ? `Pakka? ${s.created_at} wala data wapas aa jayega — abhi ka data usse badal jayega. (Restore se pehle abhi ke data ka snapshot apne aap ban jayega.)`
-    : `Sure? Your shop data will go back to ${s.created_at} — current data will be replaced. (A snapshot of the current data is taken first, automatically.)`;
+  const msg = tr(`Sure? Your shop data will go back to ${s.created_at} — current data will be replaced. (A snapshot of the current data is taken first, automatically.)`, `पक्का? ${s.created_at} वाला डेटा वापस आ जाएगा — अभी का डेटा उससे बदल जाएगा। (Restore से पहले अभी के डेटा का snapshot अपने आप बन जाएगा।)`, `Pakka? ${s.created_at} wala data wapas aa jayega — abhi ka data usse badal jayega. (Restore se pehle abhi ke data ka snapshot apne aap ban jayega.)`);
   if (!window.confirm(msg)) return;
   hideErr('backupErr');
   try {
     await api('POST', '/api/backups/' + s.id + '/restore');
-    alert(isHi() ? 'Restore ho gaya ✓ — purana data wapas aa gaya।' : 'Restored ✓ — your data is back to that snapshot.');
+    alert(tr("Restored ✓ — your data is back to that snapshot.", "Restore ho gaya ✓ — purana data wapas aa gaya।"));
     loadBackups();
     loadDashboardSummary();
     loadDashboardStock();
@@ -3279,7 +3746,7 @@ if (backupNowBtn) backupNowBtn.addEventListener('click', async () => {
 let syncConfigured = false;
 function syncBadge(inv) {
   if (!syncConfigured || !inv || inv.sync_status === 'synced') return '';
-  return ` <span class="tag" style="background:#fef3c7;color:#92400e" title="${isHi() ? 'Ye bill abhi cloud par sync nahi hua — number provisional hai' : 'This bill has not synced to the cloud yet — its number is provisional'}">${isHi() ? '⏳ Pending sync' : '⏳ Pending sync'}</span>`;
+  return ` <span class="tag" style="background:#fef3c7;color:#92400e" title="${tr("This bill has not synced to the cloud yet — its number is provisional", "ये बिल अभी cloud पर sync नहीं हुआ — इसका नंबर अभी कच्चा है")}">${tr("⏳ Pending sync", "⏳ Pending sync")}</span>`;
 }
 function renderSyncStatus(st) {
   syncConfigured = !!st.configured;
@@ -3289,16 +3756,16 @@ function renderSyncStatus(st) {
   const dashBody = $('syncDashBody');
   let html;
   if (!st.configured) {
-    html = `<div class="hint">${isHi() ? 'Sync set nahi hai — ye copy akeli chal rahi hai (cloud hub connect nahi)।' : 'Sync is not set up — this copy runs on its own (no cloud hub connected).'}</div>`;
+    html = `<div class="hint">${tr("Sync is not set up — this copy runs on its own (no cloud hub connected).", "Sync set nahi hai — ye copy akeli chal rahi hai (cloud hub connect nahi)।")}</div>`;
   } else if (st.last_result && st.last_result.startsWith('offline')) {
-    html = `<div>⚠️ <b>${isHi() ? 'Hub offline hai' : 'Hub is offline'}</b> — ${isHi() ? 'billing chalti rahegi, net aate hi sync ho jayega।' : 'billing keeps working; sync will catch up when the hub is back.'}</div>
-      <div class="hint">${isHi() ? 'Pending' : 'Pending'}: ${st.pending_count} · ${isHi() ? 'आख़री sync' : 'Last sync'}: ${esc(st.last_sync_at || '—')}</div>`;
+    html = `<div>⚠️ <b>${tr("Hub is offline", "Hub offline है")}</b> — ${tr("billing keeps working; sync will catch up when the hub is back.", "billing chalti rahegi, net aate hi sync ho jayega।")}</div>
+      <div class="hint">${tr("Pending", "Pending")}: ${st.pending_count} · ${tr("Last sync", "आख़री sync")}: ${esc(st.last_sync_at || '—')}</div>`;
   } else if (st.pending_count > 0) {
-    html = `<div>⏳ <b>${st.pending_count} ${isHi() ? 'cheezein sync honi baki hain' : 'items waiting to sync'}</b></div>
-      <div class="hint">${isHi() ? 'आख़री sync' : 'Last sync'}: ${esc(st.last_sync_at || '—')} · ${isHi() ? 'टकराव' : 'Conflicts'}: ${st.conflicts_count}</div>`;
+    html = `<div>⏳ <b>${st.pending_count} ${tr("items waiting to sync", "चीज़ें sync होनी बाकी हैं")}</b></div>
+      <div class="hint">${tr("Last sync", "आख़री sync")}: ${esc(st.last_sync_at || '—')} · ${tr("Conflicts", "टकराव")}: ${st.conflicts_count}</div>`;
   } else {
-    html = `<div>✅ <b>${isHi() ? 'Sab sync hai' : 'Everything is synced'}</b></div>
-      <div class="hint">${isHi() ? 'आख़री sync' : 'Last sync'}: ${esc(st.last_sync_at || '—')} · ${isHi() ? 'टकराव' : 'Conflicts'}: ${st.conflicts_count}</div>`;
+    html = `<div>✅ <b>${tr("Everything is synced", "सब sync हो गया")}</b></div>
+      <div class="hint">${tr("Last sync", "आख़री sync")}: ${esc(st.last_sync_at || '—')} · ${tr("Conflicts", "टकराव")}: ${st.conflicts_count}</div>`;
   }
   if (body) body.innerHTML = html;
   if (dashBody) dashBody.innerHTML = html;
@@ -3315,13 +3782,13 @@ async function doSyncNow() {
   try {
     const r = await api('POST', '/api/sync/run');
     if (r && r.ok === false) {
-      showErr('syncErr', isHi() ? 'Hub se connection nahi hua — billing chalti rahegi, baad me phir try karo।' : 'Could not reach the hub — billing keeps working, try again later.');
+      showErr('syncErr', tr("Could not reach the hub — billing keeps working, try again later.", "Hub se connection nahi hua — billing chalti rahegi, baad me phir try karo।"));
     }
     loadSyncStatus();
     loadBilling();
   } catch (e) {
     if (e.message === 'sync_not_configured') {
-      showErr('syncErr', isHi() ? 'Sync set nahi hai (SYNC_HUB_URL server par set hota hai)।' : 'Sync is not set up (SYNC_HUB_URL is configured on the server).');
+      showErr('syncErr', tr("Sync is not set up (SYNC_HUB_URL is configured on the server).", "Sync set nahi hai (SYNC_HUB_URL server par set hota hai)।"));
     } else showErr('syncErr', friendly(e));
   }
 }
@@ -3368,7 +3835,7 @@ async function loadConflicts() {
   try {
     const r = await api('GET', '/api/sync/conflicts');
     if (!r.conflicts.length) {
-      box.innerHTML = `<div class="hint">${isHi() ? 'कोई टकराव नहीं — sab saaf hai।' : 'No conflicts — all clean.'}</div>`;
+      box.innerHTML = `<div class="hint">${tr("No conflicts — all clean.", "कोई टकराव नहीं — sab saaf hai।")}</div>`;
       return;
     }
     box.innerHTML = '';
@@ -3440,11 +3907,9 @@ if (importPreviewBtn) importPreviewBtn.addEventListener('click', async () => {
   hideErr('importErr');
   const okEl = $('importOk'); if (okEl) okEl.style.display = 'none';
   const file = $('importFile').files && $('importFile').files[0];
-  if (!file) { showErr('importErr', isHi() ? 'Pehle CSV file chunein।' : 'Pehle CSV file chunein — choose a file first.'); return; }
+  if (!file) { showErr('importErr', tr("Choose a CSV file first.", "Pehle CSV file chunein।")); return; }
   if (/\.(xlsx|xls)$/i.test(file.name)) {
-    showErr('importErr', isHi()
-      ? 'Ye Excel (.xlsx) file hai — Excel me kholkar "Save As → CSV" karke save karein, phir wo CSV upload karein।'
-      : 'Ye Excel (.xlsx) file hai — use Excel me kholkar "Save As → CSV" karke save karein, phir wo CSV upload karein.');
+    showErr('importErr', tr("This is an Excel (.xlsx) file — open it in Excel, use \"Save As → CSV\", then upload that CSV.", "Ye Excel (.xlsx) file hai — Excel me kholkar \"Save As → CSV\" karke save karein, phir wo CSV upload karein।"));
     return;
   }
   const type = $('importType').value;
@@ -3461,14 +3926,14 @@ function renderImportPreview(r) {
   const box = $('importResult');
   const hi = isHi();
   const mapEntries = Object.entries(r.mapping || {});
-  let html = `<div class="hint" style="margin-bottom:6px">${hi ? 'Columns aise samjhe gaye:' : 'Columns aise samjhe gaye (mapping):'} ` +
+  let html = `<div class="hint" style="margin-bottom:6px">${tr("Columns were read like this (mapping):", "Columns ऐसे समझे गए (mapping):")} ` +
     (mapEntries.length ? mapEntries.map(([f, h]) => `<b>${esc(f)}</b> ← ${esc(h)}`).join(' · ') : '—') + '</div>';
-  html += `<div>${hi ? 'Kul rows' : 'Kul rows'}: <b>${r.total_rows}</b> · ${hi ? 'Sahi' : 'Sahi (valid)'}: <b>${r.valid_count}</b> · Duplicate: <b>${r.duplicate_count}</b> · ${hi ? 'Galat' : 'Galat (error)'}: <b>${r.error_count}</b></div>`;
+  html += `<div>${tr("Total rows", "Kul rows")}: <b>${r.total_rows}</b> · ${tr("Valid", "सही")}: <b>${r.valid_count}</b> · Duplicate: <b>${r.duplicate_count}</b> · ${tr("Errors", "गलत")}: <b>${r.error_count}</b></div>`;
   if (r.duplicates && r.duplicates.length) {
-    html += `<div class="hint" style="margin-top:6px">${hi ? 'Duplicate (kuch):' : 'Duplicate (kuch):'} ${r.duplicates.map((d) => esc(d.name)).join(', ')}</div>`;
+    html += `<div class="hint" style="margin-top:6px">${tr("Duplicates:", "Duplicate (kuch):")} ${r.duplicates.map((d) => esc(d.name)).join(', ')}</div>`;
   }
   if (r.errors && r.errors.length) {
-    html += `<div style="margin-top:8px"><b>${hi ? 'Galat rows (ye nahi chadegi):' : 'Galat rows (ye import nahi hongi):'}</b>` +
+    html += `<div style="margin-top:8px"><b>${tr("Rows with errors (these will not be imported):", "गलत rows (ये import नहीं होंगी):")}</b>` +
       r.errors.map((e) => `<div class="hint" style="color:var(--red,#c0392b)">Row ${e.row}: ${esc(e.reason)}</div>`).join('') + '</div>';
   }
   if (r.sample && r.sample.length) {
@@ -3477,24 +3942,24 @@ function renderImportPreview(r) {
       r.sample.map((s) => `<tr><td>${s.row}</td>${cols.map((c) => `<td>${s[c] === null || s[c] === undefined ? '' : esc(s[c])}</td>`).join('')}<td>${s.duplicate ? '<span class="pend-amt">duplicate</span>' : ''}</td></tr>`).join('') +
       '</tbody></table></div>';
   }
-  html += `<div class="hint" style="margin-top:6px">${hi ? 'Sab theek lage to upar "Import karo" dabayein — import se pehle ek backup snapshot apne aap banega।' : 'Sab theek lage to "Import karo" dabayein — import se pehle ek backup snapshot apne aap ban jayega.'}</div>`;
+  html += `<div class="hint" style="margin-top:6px">${tr("If everything looks right, press \"Import\" — a backup snapshot is taken automatically before importing.", "Sab theek lage to upar \"Import karo\" dabayein — import se pehle ek backup snapshot apne aap banega।")}</div>`;
   box.innerHTML = html;
 }
 
 const importCommitBtn = $('importCommitBtn');
 if (importCommitBtn) importCommitBtn.addEventListener('click', async () => {
   hideErr('importErr');
-  if (!importPreviewState) { showErr('importErr', isHi() ? 'Pehle Preview dekho।' : 'Pehle Preview dekho — preview first.'); return; }
+  if (!importPreviewState) { showErr('importErr', tr("Run the preview first.", "Pehle Preview dekho।")); return; }
   const st = importPreviewState;
   importCommitBtn.disabled = true;
   try {
     const r = await api('POST', '/api/import/' + st.type + '/commit', { content: st.content, duplicate: st.duplicate });
     invalidateImportPreview();
     const box = $('importResult');
-    box.innerHTML = `<div class="ok-msg" style="display:block">${isHi() ? 'Import ho gaya ✓' : 'Import ho gaya ✓'} — ` +
-      `${isHi() ? 'Naye' : 'Naye'}: <b>${r.created}</b> · Update: <b>${r.updated}</b> · Skip: <b>${r.skipped}</b> · Galat: <b>${r.error_count}</b>` +
-      (r.opening_ignored_on_update ? `<br>${isHi() ? 'Note:' : 'Note:'} ${r.opening_ignored_on_update} ${isHi() ? 'purane parties ka opening balance dobara nahi joda gaya।' : 'purane parties ka opening balance dobara nahi joda gaya (double udhaar nahi hota).'}` : '') +
-      `<br>${isHi() ? 'Safety backup snapshot' : 'Safety backup snapshot'} #${r.snapshot_id} ${isHi() ? 'ban gaya hai — kuch galat lage to Settings → Data Backup se restore kar sakte ho।' : 'ban gaya hai — kuch galat lage to Settings → Data Backup se restore kar sakte ho.'}</div>`;
+    box.innerHTML = `<div class="ok-msg" style="display:block">${tr("Import done ✓", "Import ho gaya ✓")} — ` +
+      `${tr("New", "Naye")}: <b>${r.created}</b> · Update: <b>${r.updated}</b> · Skip: <b>${r.skipped}</b> · Galat: <b>${r.error_count}</b>` +
+      (r.opening_ignored_on_update ? `<br>${tr("Note:", "Note:")} ${r.opening_ignored_on_update} ${tr("existing parties did not get their opening balance added again (no double credit).", "purane parties ka opening balance dobara nahi joda gaya।")}` : '') +
+      `<br>${tr("Safety backup snapshot", "Safety backup snapshot")} #${r.snapshot_id} ${tr("was created — if anything looks wrong, restore it from Settings → Data Backup.", "ban gaya hai — kuch galat lage to Settings → Data Backup se restore kar sakte ho।")}</div>`;
     loadBackups();
     loadDashboardSummary();
   } catch (e) { showErr('importErr', friendly(e)); }

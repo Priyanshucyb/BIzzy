@@ -8,4 +8,4 @@
 //   window.BOS_API_BASE = 'https://api.example.com';
 // A trailing slash is fine — the app strips it. After changing this file,
 // redeploy the frontend (it is a static file, no build step).
-window.BOS_API_BASE = 'https://bizzy-dy2r.onrender.com';
+window.BOS_API_BASE = '';

@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { DatabaseSync } = require('node:sqlite');
 const { Pool } = require('pg');
-const { PG_SCHEMA_SQL, TABLES } = require('./db');
+const { PG_SCHEMA_SQL, TABLES, MART_TABLES } = require('./db');
 
 async function main() {
   const args = process.argv.slice(2);
@@ -66,7 +66,7 @@ async function main() {
 
     await client.query('BEGIN');
     const summary = [];
-    for (const t of TABLES) {
+    for (const t of [...TABLES, ...MART_TABLES]) {
       const rows = src.prepare(`SELECT * FROM ${t}`).all();
       if (!rows.length) { summary.push([t, 0]); continue; }
       const cols = Object.keys(rows[0]);

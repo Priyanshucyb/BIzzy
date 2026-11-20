@@ -111,7 +111,17 @@ app.use((req, res, next) => {
 // 10mb body limit: Stage C import posts a whole CSV file as JSON text
 // (up to 5000 rows) — the 100kb default would reject real Vyapar exports.
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, '..', 'frontend')));
+app.use(express.static(path.join(__dirname, '..', 'frontend'), {
+  setHeaders(res, filePath) {
+    // Code + manifest + service worker must always revalidate so updates and
+    // the PWA land immediately; images are content-stable and can cache a day.
+    if (/\.(html|js|css|webmanifest)$/i.test(filePath) || /sw\.js$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-cache');
+    } else if (/\.(png|jpe?g|svg|ico|webp|gif)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+    }
+  }
+}));
 
 // Express 4 does not forward rejected promises from async handlers to the
 // error middleware — wrap the verb methods so every async route/middleware
@@ -139,7 +149,7 @@ for (const m of ['get', 'post', 'put', 'delete', 'use']) {
 function makeToken() { return crypto.randomBytes(32).toString('hex'); }
 
 function publicUser(u) {
-  return { id: u.id, business_id: u.business_id, name: u.name, email: u.email, role: u.role, access: u.access };
+  return { id: u.id, business_id: u.business_id, name: u.name, email: u.email, role: u.role, access: u.access, blocked: !!u.blocked };
 }
 function publicBusiness(b) {
   if (!b) return null;
@@ -147,7 +157,7 @@ function publicBusiness(b) {
     id: b.id, name: b.name, owner_name: b.owner_name, phone: b.phone, city: b.city,
     gst_enabled: !!b.gst_enabled, gstin: b.gstin,
     upi_id: b.upi_id || '', upi_payee_name: b.upi_payee_name || '',
-    language: b.language === 'hi' ? 'hi' : 'en',
+    language: ['hi', 'hg'].includes(b.language) ? b.language : 'en',
     setup_complete: !!(b.name && b.name.trim()),
     updated_at: b.updated_at, sync_status: b.sync_status
   };
@@ -163,6 +173,10 @@ async function requireAuth(req, res, next) {
     `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`
   , token);
   if (row) {
+    // Admin Panel upgrade: a user blocked by the super admin is locked
+    // out immediately — every request with their (still-existing) token
+    // is refused, so a block takes effect without waiting for logout.
+    if (row.blocked) return res.status(403).json({ error: 'account_blocked' });
     req.user = row;
     req.token = token;
     return next();
@@ -187,7 +201,7 @@ function requireOwner(req, res, next) {
 
 // ---------- health ----------
 app.get('/api/health', async (req, res) => {
-  res.json({ ok: true, mode: db.mode, db: db.engine, stage: 'A', app: 'Business OS v3' });
+  res.json({ ok: true, mode: db.mode, db: db.engine, stage: 'A', app: 'BizYour by DILIGENCE', modules: ['workspace', 'business-mart'] });
 });
 
 // ---------- auth API ----------
@@ -311,6 +325,8 @@ app.post('/api/auth/login', async (req, res) => {
     // SaaS Stage 2: an OTP-pending account cannot log in yet.
     const pend = await db.get('SELECT id FROM pending_signups WHERE user_id = ?', u.id);
     if (pend) return res.status(403).json({ error: 'email_not_verified' });
+    // Admin Panel upgrade: a user blocked by the super admin cannot log in.
+    if (u.blocked) return res.status(403).json({ error: 'account_blocked' });
     const token = makeToken();
     await db.run('INSERT INTO sessions (token, user_id) VALUES (?, ?)', token, u.id);
     return res.json({ token, user: publicUser(u), business: publicBusiness(await getBusiness(u.business_id)) });
@@ -379,10 +395,10 @@ async function issueOtp(email, purpose) {
     `INSERT INTO email_otps (email, purpose, code_hash, expires_at) VALUES (?, ?, ?, ?)`
   , email, purpose, hash, expires);
   const subject = purpose === 'reset'
-    ? 'Business OS — password reset code'
-    : 'Business OS — verify your email';
+    ? 'BizYour — password reset code'
+    : 'BizYour — verify your email';
   const mail = await sendMail(email, subject,
-    `Your Business OS code is ${code}. It is valid for ${OTP_TTL_MIN} minutes. If you did not ask for this, ignore this email.`);
+    `Your BizYour code is ${code}. It is valid for ${OTP_TTL_MIN} minutes. If you did not ask for this, ignore this email.`);
   return { ok: true, mail_configured: mail.mail_configured, sent: mail.sent };
 }
 
@@ -496,6 +512,31 @@ async function nextInvoiceNo() {
   const row = await db.get(`SELECT COUNT(*) AS c FROM subscription_payments WHERE status = 'approved'`);
   return `SUB-${new Date().getUTCFullYear()}-${String(Number(row.c) + 1).padStart(4, '0')}`;
 }
+
+// Admin Panel upgrade: extend by a plain number of DAYS (the admin
+// detail's +7/+30 buttons) without changing the shop's plan. A paid
+// period extends paid_until; a trial shop extends its trial end. The
+// base is the current end when still in the future, else today — the
+// same rule as extendSubscription — and extending also unblocks.
+async function extendSubscriptionDays(bizId, days) {
+  const sub = await ensureSubscription(bizId);
+  const now = fmtTs(new Date());
+  if (sub.paid_until) {
+    const base = sub.paid_until > now ? sub.paid_until : now;
+    await db.run(
+      `UPDATE subscriptions SET paid_until = ?, blocked = 0,
+         updated_at = datetime('now'), sync_status = 'local' WHERE business_id = ?`
+    , addDaysTs(base, days), bizId);
+  } else {
+    const end = sub.trial_ends_at || now;
+    const base = end > now ? end : now;
+    await db.run(
+      `UPDATE subscriptions SET trial_ends_at = ?, blocked = 0,
+         updated_at = datetime('now'), sync_status = 'local' WHERE business_id = ?`
+    , addDaysTs(base, days), bizId);
+  }
+}
+
 async function approvePayment(pay) {
   const plan = await db.get('SELECT * FROM plans WHERE code = ?', pay.plan_code);
   if (!plan) throw new Error('plan_not_found');
@@ -662,6 +703,24 @@ app.post('/api/subscription/gateway/verify', requireAuth, requireOwner, async (r
 function requireSuperAdmin(req, res, next) {
   if (!req.user || req.user.role !== 'superadmin') return res.status(403).json({ error: 'admin_only' });
   next();
+}
+
+// Admin Panel upgrade: audit trail for ADMIN actions. The shop-scoped
+// auditLog() helper skips superadmin requests (their business_id is
+// null), so admin actions write into the TARGET shop's history instead —
+// the shop owner can see in their own audit log that DILIGENCE Admin did
+// it, and the entry lives/dies with the shop like all its other history.
+// user_id stays NULL (platform admin ids are not users-table ids);
+// user_name carries who acted. Best-effort, like auditLog().
+async function adminAudit(req, bizId, action, entity, entityId, summary) {
+  try {
+    await db.run(
+      `INSERT INTO audit_log (business_id, user_id, user_name, action, entity, entity_id, summary)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    , bizId, null, `DILIGENCE Admin (${req.user.email})`, action, entity,
+      entityId === undefined || entityId === null ? '' : String(entityId),
+      String(summary || '').slice(0, 300));
+  } catch (e) { console.error('admin audit write failed:', e.message); }
 }
 app.get('/api/admin/businesses', requireAuth, requireSuperAdmin, async (req, res) => {
   // Metadata ONLY (shop identity + subscription state) — never a shop's
@@ -918,6 +977,16 @@ app.post('/api/admin/payments/:id/reject', requireAuth, requireSuperAdmin, async
 app.post('/api/admin/businesses/:id/extend', requireAuth, requireSuperAdmin, async (req, res) => {
   const biz = await getBusiness(req.params.id);
   if (!biz) return res.status(404).json({ error: 'business_not_found' });
+  // Admin Panel upgrade: {days: N} extends by N days, plan unchanged
+  // (the detail panel's +7/+30 buttons). The original {plan_code} shape
+  // is untouched for existing callers.
+  const days = Number((req.body || {}).days);
+  if (Number.isInteger(days) && days > 0 && days <= 3650) {
+    await extendSubscriptionDays(biz.id, days);
+    await adminAudit(req, biz.id, 'update', 'subscription', biz.id,
+      `Admin ne subscription ${days} din badhaya: ${biz.name || '(no name)'}`);
+    return res.json({ subscription: await getSubscriptionState(biz.id) });
+  }
   const plan = await db.get('SELECT * FROM plans WHERE code = ?', String((req.body || {}).plan_code || ''));
   if (!plan) return res.status(400).json({ error: 'plan_not_found' });
   await extendSubscription(biz.id, plan); // also unblocks
@@ -927,10 +996,183 @@ app.post('/api/admin/businesses/:id/block', requireAuth, requireSuperAdmin, asyn
   const biz = await getBusiness(req.params.id);
   if (!biz) return res.status(404).json({ error: 'business_not_found' });
   await ensureSubscription(biz.id);
+  const blocked = (req.body || {}).blocked ? 1 : 0;
   await db.run(
     `UPDATE subscriptions SET blocked = ?, updated_at = datetime('now') WHERE business_id = ?`
-  , (req.body || {}).blocked ? 1 : 0, biz.id);
+  , blocked, biz.id);
+  await adminAudit(req, biz.id, blocked ? 'block' : 'unblock', 'business', biz.id,
+    `Admin ne shop ${blocked ? 'BLOCK' : 'UNBLOCK'} kiya: ${biz.name || '(no name)'}`);
   res.json({ subscription: await getSubscriptionState(biz.id) });
+});
+// ---------- Admin Panel upgrade: full account control ----------
+// User shape for admin responses — NEVER the password hash.
+function publicAdminUser(u) {
+  return {
+    id: u.id, business_id: u.business_id, name: u.name, email: u.email,
+    role: u.role, access: u.access, blocked: !!u.blocked, created_at: u.created_at
+  };
+}
+// Every table that carries a business_id and belongs to ONE shop — the
+// delete-shop cascade. (TABLES in db.js is the backup-export list; the
+// Stage 3 platform tables below carry business_id too and are the shop's
+// data as well, so a permanent delete takes them along.)
+// ORDER IS LOAD-BEARING: SQLite enforces the schema's REFERENCES, so a
+// parent row may only be deleted after every child row that points at
+// it. The list therefore runs leaf-first —
+//   return_items → returns / invoice_items / products,
+//   estimate_items → estimates / products,
+//   invoice_items + customer_payments → invoices → customers,
+//   purchase_items + supplier_payments → purchases → suppliers,
+//   stock_movements → products —
+// and the business-only tables (expenses, subscriptions, …) come last.
+// (The Postgres DDL strips REFERENCES, so PG cannot FK-fail here, but it
+// runs this same list — one cascade, both engines.) A populated shop
+// deleted parent-first dies on the very first statement (suppliers,
+// while purchases still reference them) — keep children before parents
+// when adding tables here.
+const SHOP_DATA_TABLES = [
+  'return_items', 'estimate_items', 'invoice_items',
+  'customer_payments', 'supplier_payments', 'purchase_items', 'stock_movements',
+  'returns', 'estimates', 'invoices', 'purchases',
+  'customers', 'products', 'suppliers',
+  'expenses',
+  'subscriptions', 'subscription_payments', 'onboarding',
+  'backup_snapshots', 'audit_log', 'sync_ids', 'sync_conflicts', 'sync_tombstones'
+];
+
+app.get('/api/admin/businesses/:id/users', requireAuth, requireSuperAdmin, async (req, res) => {
+  const biz = await getBusiness(req.params.id);
+  if (!biz) return res.status(404).json({ error: 'business_not_found' });
+  const rows = await db.all(
+    `SELECT id, business_id, name, email, role, access, blocked, created_at FROM users
+     WHERE business_id = ? ORDER BY (role = 'owner') DESC, id ASC`
+  , biz.id);
+  res.json({ users: rows.map(publicAdminUser) });
+});
+
+// Permanently delete a shop and ALL its data, in one transaction.
+app.delete('/api/admin/businesses/:id', requireAuth, requireSuperAdmin, async (req, res) => {
+  const biz = await getBusiness(req.params.id);
+  if (!biz) return res.status(404).json({ error: 'business_not_found' });
+  // The audit entry is written BEFORE the delete (the shop's history is
+  // part of its data and is removed with it — the write still happens,
+  // in the shop's own log, like every other admin action).
+  await adminAudit(req, biz.id, 'delete', 'business', biz.id,
+    `Admin ne shop PERMANENT DELETE kiya: ${biz.name || '(no name)'} · owner ${biz.owner_name || ''}`);
+  const shopUsers = await db.all('SELECT id FROM users WHERE business_id = ?', biz.id);
+  const userIds = shopUsers.map((u) => u.id);
+  const tx = await db.begin();
+  try {
+    if (userIds.length) {
+      const ph = userIds.map(() => '?').join(',');
+      await tx.run(`DELETE FROM sessions WHERE user_id IN (${ph})`, ...userIds);
+      await tx.run(`DELETE FROM pending_signups WHERE user_id IN (${ph})`, ...userIds);
+    }
+    for (const t of SHOP_DATA_TABLES) {
+      await tx.run(`DELETE FROM ${t} WHERE business_id = ?`, biz.id);
+    }
+    await tx.run('DELETE FROM users WHERE business_id = ?', biz.id);
+    await tx.run('DELETE FROM businesses WHERE id = ?', biz.id);
+    await tx.commit();
+  } catch (e) {
+    await tx.rollback();
+    throw e;
+  }
+  res.json({ ok: true });
+});
+
+// Assign / change a shop's plan NOW: a fresh period of the plan's
+// duration starts today (status active) and any block is lifted. The
+// 'trial' plan code instead restarts the trial clock (trial end set,
+// paid period cleared). No payment row is created — revenue is never
+// faked; this is the admin granting a plan by hand.
+app.post('/api/admin/businesses/:id/plan', requireAuth, requireSuperAdmin, async (req, res) => {
+  const biz = await getBusiness(req.params.id);
+  if (!biz) return res.status(404).json({ error: 'business_not_found' });
+  const plan = await db.get('SELECT * FROM plans WHERE code = ?', String((req.body || {}).plan_code || ''));
+  if (!plan) return res.status(400).json({ error: 'plan_not_found' });
+  await ensureSubscription(biz.id);
+  const now = fmtTs(new Date());
+  if (plan.code === 'trial') {
+    await db.run(
+      `UPDATE subscriptions SET plan_code = 'trial', trial_ends_at = ?, paid_until = NULL,
+         blocked = 0, grace_days = ?, updated_at = datetime('now'), sync_status = 'local'
+       WHERE business_id = ?`
+    , addDaysTs(now, plan.duration_days), Number(plan.grace_days || 7), biz.id);
+  } else {
+    await db.run(
+      `UPDATE subscriptions SET plan_code = ?, paid_until = ?, blocked = 0, grace_days = ?,
+         updated_at = datetime('now'), sync_status = 'local' WHERE business_id = ?`
+    , plan.code, addDaysTs(now, plan.duration_days), Number(plan.grace_days || 7), biz.id);
+  }
+  await adminAudit(req, biz.id, 'update', 'subscription', biz.id,
+    `Admin ne plan badla: ${plan.code} (${plan.name || plan.code}) · shop ${biz.name || '(no name)'}`);
+  res.json({ ok: true, subscription: await getSubscriptionState(biz.id) });
+});
+
+// Block / unblock ONE user of a shop. Super admins live in
+// platform_admins, never in users, so no users row can be a superadmin —
+// the role check below is belt-and-braces only.
+app.post('/api/admin/users/:id/block', requireAuth, requireSuperAdmin, async (req, res) => {
+  const target = await db.get('SELECT * FROM users WHERE id = ?', req.params.id);
+  if (!target) return res.status(404).json({ error: 'user_not_found' });
+  if (target.role === 'superadmin') return res.status(400).json({ error: 'cannot_block_superadmin' });
+  const blocked = (req.body || {}).blocked ? 1 : 0;
+  await db.run(
+    `UPDATE users SET blocked = ?, updated_at = datetime('now') WHERE id = ?`
+  , blocked, target.id);
+  // Live sessions are NOT deleted: requireAuth checks this flag on every
+  // request, so the user's existing tokens stop working at once (403
+  // account_blocked) and work again if the admin unblocks.
+  await adminAudit(req, target.business_id, blocked ? 'block' : 'unblock', 'user', target.id,
+    `Admin ne user ${blocked ? 'BLOCK' : 'UNBLOCK'} kiya: ${target.name} (${target.email})`);
+  res.json({ user: publicAdminUser(await db.get('SELECT * FROM users WHERE id = ?', target.id)) });
+});
+
+// Change a shop user's role and/or access level.
+app.put('/api/admin/users/:id/role', requireAuth, requireSuperAdmin, async (req, res) => {
+  const target = await db.get('SELECT * FROM users WHERE id = ?', req.params.id);
+  if (!target) return res.status(404).json({ error: 'user_not_found' });
+  if (target.role === 'superadmin') return res.status(400).json({ error: 'cannot_change_superadmin' });
+  const b = req.body || {};
+  const role = b.role !== undefined ? String(b.role) : target.role;
+  let access = b.access !== undefined ? String(b.access) : target.access;
+  if (!['owner', 'staff'].includes(role)) return res.status(400).json({ error: 'invalid_role' });
+  if (!['all', 'billing', 'stock'].includes(access)) return res.status(400).json({ error: 'invalid_access' });
+  if (target.role === 'owner' && role !== 'owner') {
+    // A shop must always keep at least one owner.
+    const owners = await db.get(
+      `SELECT COUNT(*) AS c FROM users WHERE business_id = ? AND role = 'owner'`
+    , target.business_id);
+    if (Number(owners.c) <= 1) return res.status(400).json({ error: 'last_owner' });
+  }
+  if (role === 'owner') access = 'all'; // owners always have full access (signup invariant)
+  await db.run(
+    `UPDATE users SET role = ?, access = ?, updated_at = datetime('now') WHERE id = ?`
+  , role, access, target.id);
+  await adminAudit(req, target.business_id, 'update', 'user', target.id,
+    `Admin ne user ka role/access badla: ${target.name} (${target.email}) · ${target.role}/${target.access} → ${role}/${access}`);
+  res.json({ user: publicAdminUser(await db.get('SELECT * FROM users WHERE id = ?', target.id)) });
+});
+
+// Remove ONE user from a shop (their sessions + any pending-signup
+// marker go with them). The shop's only owner cannot be removed.
+app.delete('/api/admin/users/:id', requireAuth, requireSuperAdmin, async (req, res) => {
+  const target = await db.get('SELECT * FROM users WHERE id = ?', req.params.id);
+  if (!target) return res.status(404).json({ error: 'user_not_found' });
+  if (target.role === 'superadmin') return res.status(400).json({ error: 'cannot_delete_superadmin' });
+  if (target.role === 'owner') {
+    const owners = await db.get(
+      `SELECT COUNT(*) AS c FROM users WHERE business_id = ? AND role = 'owner'`
+    , target.business_id);
+    if (Number(owners.c) <= 1) return res.status(400).json({ error: 'last_owner' });
+  }
+  await adminAudit(req, target.business_id, 'delete', 'user', target.id,
+    `Admin ne user hataya: ${target.name} (${target.email}) · role ${target.role}`);
+  await db.run('DELETE FROM sessions WHERE user_id = ?', target.id);
+  await db.run('DELETE FROM pending_signups WHERE user_id = ?', target.id);
+  await db.run('DELETE FROM users WHERE id = ?', target.id);
+  res.json({ ok: true });
 });
 app.get('/api/admin/settings', requireAuth, requireSuperAdmin, async (req, res) => {
   res.json({ settings: { support_whatsapp: await getSetting('support_whatsapp'), help_video_url: await getSetting('help_video_url'), top_plan_code: await getSetting('top_plan_code') } });
@@ -971,13 +1213,13 @@ const ONBOARDING_STEP_DEFS = [
   {
     key: 'data', target: 'products',
     title_en: 'Add your first product (or import old data)', title_hi: 'पहला product जोड़ो (या पुराना data import करो)',
-    desc_en: 'Add items you sell — or bring products, customers and old udhaar from Vyapar/Tally/Excel in one import (Settings → Import).',
+    desc_en: 'Add items you sell — or bring products, customers and old credit from Vyapar/Tally/Excel in one import (Settings → Import).',
     desc_hi: 'जो सामान बेचते हो वो जोड़ो — या Vyapar/Tally/Excel से products, ग्राहक और पुराना उधार एक import में ले आओ (Settings → Import)।'
   },
   {
     key: 'customer', target: 'customers',
     title_en: 'Add your first customer', title_hi: 'पहला ग्राहक जोड़ो',
-    desc_en: 'Save customer name + phone once — bills, udhaar and WhatsApp reminders then take one tap.',
+    desc_en: 'Save customer name + phone once — bills, credit and WhatsApp reminders then take one tap.',
     desc_hi: 'ग्राहक का नाम + फ़ोन एक बार save करो — फिर bill, उधार और WhatsApp reminder एक tap में जाएगा।'
   },
   {
@@ -989,7 +1231,7 @@ const ONBOARDING_STEP_DEFS = [
   {
     key: 'expense', target: 'expenses',
     title_en: 'Add your first expense', title_hi: 'पहला खर्चा जोड़ो',
-    desc_en: 'Rent, salary, bijli — expenses you record here make the profit report honest.',
+    desc_en: 'Rent, salary, electricity — expenses you record here make the profit report honest.',
     desc_hi: 'किराया, तनख्वाह, बिजली — यहाँ दर्ज खर्चे ही profit report को सच्चा बनाते हैं।'
   },
   {
@@ -1124,7 +1366,7 @@ app.put('/api/business', requireAuth, requireOwner, async (req, res) => {
     gstin: body.gstin !== undefined ? String(body.gstin).trim().toUpperCase() : cur.gstin,
     upi_id: body.upi_id !== undefined ? String(body.upi_id).trim() : (cur.upi_id || ''),
     upi_payee_name: body.upi_payee_name !== undefined ? String(body.upi_payee_name).trim() : (cur.upi_payee_name || ''),
-    language: body.language !== undefined ? (body.language === 'hi' ? 'hi' : 'en') : cur.language
+    language: body.language !== undefined ? (['hi', 'hg'].includes(body.language) ? body.language : 'en') : cur.language
   };
   if (next.upi_id && !UPI_ID_RE.test(next.upi_id)) {
     return res.status(400).json({ error: 'invalid_upi_id' });
@@ -1758,7 +2000,7 @@ app.get('/api/public/hisab/:token', async (req, res) => {
      WHERE i.customer_id = ? AND cp.business_id = ? ORDER BY cp.id DESC`
   , c.id, bizId);
   res.json({
-    business: { name: biz ? biz.name : '' },
+    business: { name: biz ? biz.name : '', language: biz && ['hi', 'hg'].includes(biz.language) ? biz.language : 'en' },
     customer: { name: c.name },
     pending: pub.pending,
     total_billed: pub.total_billed,
@@ -1856,7 +2098,7 @@ async function getOwnedInvoice(bizId, id) {
 // and callers render/send NOTHING — a QR is never faked.
 function upiPayeeName(biz) {
   const custom = biz && biz.upi_payee_name ? String(biz.upi_payee_name).trim() : '';
-  return custom || (biz && biz.name ? String(biz.name).trim() : '') || 'Business OS';
+  return custom || (biz && biz.name ? String(biz.name).trim() : '') || 'BizYour';
 }
 function buildUpiUri(biz, amount, billNo) {
   if (!biz || !biz.upi_id) return null;
@@ -2458,8 +2700,9 @@ app.get('/api/estimates/:id/whatsapp-link', requireAuth, requireBillingAccess, a
   const phone = normalizePhone(rawPhone);
   if (!phone) return res.status(400).json({ error: 'customer_phone_missing' });
   const biz = await getBusiness(bizId);
-  const bizName = (biz && biz.name) || 'Business OS';
+  const bizName = (biz && biz.name) || 'BizYour';
   const hi = !!(biz && biz.language === 'hi');
+  const hg = !!(biz && biz.language === 'hg');
   const items = await db.all(
     'SELECT * FROM estimate_items WHERE estimate_id = ? AND business_id = ? ORDER BY id ASC'
   , est.id, bizId);
@@ -2472,12 +2715,18 @@ app.get('/api/estimates/:id/whatsapp-link', requireAuth, requireBillingAccess, a
     msg += `\nकुल: ₹${msgAmt(est.total)}`;
     msg += `\n(ये सिर्फ़ एस्टीमेट है — बिल नहीं है।)`;
     msg += `\nधन्यवाद! 🙏`;
+  } else if (hg) {
+    msg = `📋 *${bizName}* — Estimate #${est.estimate_no} (${est.date})\n${sep}\n${lines.join('\n')}\n${sep}`;
+    if (Number(est.discount) > 0) msg += `\nChhoot: −₹${msgAmt(est.discount)}`;
+    msg += `\nKul: ₹${msgAmt(est.total)}`;
+    msg += `\n(Ye sirf estimate hai — bill nahi hai.)`;
+    msg += `\nDhanyavaad! 🙏`;
   } else {
     msg = `📋 *${bizName}* — Estimate #${est.estimate_no} (${est.date})\n${sep}\n${lines.join('\n')}\n${sep}`;
     if (Number(est.discount) > 0) msg += `\nDiscount: −₹${msgAmt(est.discount)}`;
     msg += `\nTotal: ₹${msgAmt(est.total)}`;
     msg += `\n(This is an estimate only — not a bill.)`;
-    msg += `\nDhanyavaad! 🙏`;
+    msg += `\nThank you! 🙏`;
   }
   res.json({ phone, url: 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), message: msg });
 });
@@ -2624,8 +2873,9 @@ app.get('/api/returns/:id/whatsapp-link', requireAuth, requireBillingAccess, asy
   const phone = normalizePhone(rawPhone);
   if (!phone) return res.status(400).json({ error: 'customer_phone_missing' });
   const biz = await getBusiness(bizId);
-  const bizName = (biz && biz.name) || 'Business OS';
+  const bizName = (biz && biz.name) || 'BizYour';
   const hi = !!(biz && biz.language === 'hi');
+  const hg = !!(biz && biz.language === 'hg');
   const items = await db.all(
     `SELECT ri.*, ii.product_name AS product_name
      FROM return_items ri JOIN invoice_items ii ON ii.id = ri.invoice_item_id AND ii.business_id = ri.business_id
@@ -2639,11 +2889,16 @@ app.get('/api/returns/:id/whatsapp-link', requireAuth, requireBillingAccess, asy
     msg += `\nवापसी कुल: ₹${msgAmt(r.total_amount)}`;
     msg += `\nये रकम आपके हिसाब से कम कर दी गई है।`;
     msg += `\nधन्यवाद! 🙏`;
+  } else if (hg) {
+    msg = `↩️ *${bizName}* — Credit Note #${r.return_no} (Bill #${r.bill_no}, ${r.date})\n${sep}\n${lines.join('\n')}\n${sep}`;
+    msg += `\nWapsi kul: ₹${msgAmt(r.total_amount)}`;
+    msg += `\nYe rakam aapke hisaab se kam kar di gayi hai.`;
+    msg += `\nDhanyavaad! 🙏`;
   } else {
     msg = `↩️ *${bizName}* — Credit Note #${r.return_no} (Bill #${r.bill_no}, ${r.date})\n${sep}\n${lines.join('\n')}\n${sep}`;
     msg += `\nReturn total: ₹${msgAmt(r.total_amount)}`;
     msg += `\nThis amount has been adjusted in your account.`;
-    msg += `\nDhanyavaad! 🙏`;
+    msg += `\nThank you! 🙏`;
   }
   res.json({ phone, url: 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), message: msg });
 });
@@ -2733,8 +2988,9 @@ app.get('/api/invoices/:id/whatsapp-link', requireAuth, requireBillingAccess, as
   if (!phone) return res.status(400).json({ error: 'customer_phone_missing' });
 
   const biz = await getBusiness(bizId);
-  const bizName = (biz && biz.name) || 'Business OS';
+  const bizName = (biz && biz.name) || 'BizYour';
   const hi = !!(biz && biz.language === 'hi');
+  const hg = !!(biz && biz.language === 'hg');
   const pub = publicInvoice(inv);
   const items = await db.all(
     `SELECT * FROM invoice_items WHERE invoice_id = ? AND business_id = ? ORDER BY id ASC`
@@ -2749,13 +3005,20 @@ app.get('/api/invoices/:id/whatsapp-link', requireAuth, requireBillingAccess, as
     msg += `\nजमा: ₹${msgAmt(inv.paid_amount)} · बाकी: ₹${msgAmt(pub.pending_amount)}`;
     if (inv.gst_enabled) msg += `\n(GST शामिल: ₹${msgAmt(inv.gst_amount)})`;
     msg += `\nधन्यवाद! 🙏`;
+  } else if (hg) {
+    msg = `🧾 *${bizName}* — Bill #${inv.bill_no} (${inv.date})\n${sep}\n${lines.join('\n')}\n${sep}`;
+    if (Number(inv.discount) > 0) msg += `\nChhoot: −₹${msgAmt(inv.discount)}`;
+    msg += `\nKul: ₹${msgAmt(inv.total)}`;
+    msg += `\nJama: ₹${msgAmt(inv.paid_amount)} · Baaki: ₹${msgAmt(pub.pending_amount)}`;
+    if (inv.gst_enabled) msg += `\n(GST shaamil: ₹${msgAmt(inv.gst_amount)})`;
+    msg += `\nDhanyavaad! 🙏`;
   } else {
     msg = `🧾 *${bizName}* — Bill #${inv.bill_no} (${inv.date})\n${sep}\n${lines.join('\n')}\n${sep}`;
     if (Number(inv.discount) > 0) msg += `\nDiscount: −₹${msgAmt(inv.discount)}`;
     msg += `\nTotal: ₹${msgAmt(inv.total)}`;
     msg += `\nPaid: ₹${msgAmt(inv.paid_amount)} · Balance: ₹${msgAmt(pub.pending_amount)}`;
     if (inv.gst_enabled) msg += `\n(GST included: ₹${msgAmt(inv.gst_amount)})`;
-    msg += `\nDhanyavaad! 🙏`;
+    msg += `\nThank you! 🙏`;
   }
   // Updates Stage A: payment line for THIS bill's balance — only when a
   // UPI ID is set and a balance is due (buildUpiUri is null otherwise).
@@ -2763,6 +3026,7 @@ app.get('/api/invoices/:id/whatsapp-link', requireAuth, requireBillingAccess, as
   if (billPayUri) {
     msg += hi
       ? `\nUPI से पेमेंट करें: ${biz.upi_id}\n${billPayUri}`
+      : hg ? `\nUPI se payment karein: ${biz.upi_id}\n${billPayUri}`
       : `\nPay on UPI: ${biz.upi_id}\n${billPayUri}`;
   }
   // Updates Stage D: generating a bill's WhatsApp link IS the onboarding
@@ -2787,8 +3051,9 @@ app.get('/api/customers/:id/reminder-link', requireAuth, requireBillingAccess, a
   if (!phone) return res.status(400).json({ error: 'customer_phone_missing' });
 
   const biz = await getBusiness(bizId);
-  const bizName = (biz && biz.name) || 'Business OS';
+  const bizName = (biz && biz.name) || 'BizYour';
   const hi = !!(biz && biz.language === 'hi');
+  const hg = !!(biz && biz.language === 'hg');
   const open = await db.all(
     `SELECT * FROM invoices WHERE customer_id = ? AND business_id = ? AND total > paid_amount ORDER BY id ASC`
   , c.id, bizId);
@@ -2799,7 +3064,8 @@ app.get('/api/customers/:id/reminder-link', requireAuth, requireBillingAccess, a
     if (i.kind === 'opening') {
       return hi
         ? `पिछला बाकी (Opening Balance) — ₹${msgAmt(p.pending_amount)}`
-        : `Pichhla baaki (Opening Balance) — ₹${msgAmt(p.pending_amount)}`;
+        : hg ? `Pichhla baaki (Opening Balance) — ₹${msgAmt(p.pending_amount)}`
+        : `Previous balance (Opening Balance) — ₹${msgAmt(p.pending_amount)}`;
     }
     return hi
       ? `बिल #${i.bill_no} (${i.date}) — ₹${msgAmt(p.pending_amount)}`
@@ -2808,8 +3074,10 @@ app.get('/api/customers/:id/reminder-link', requireAuth, requireBillingAccess, a
   let msg;
   if (hi) {
     msg = `नमस्ते ${pub.name} जी 🙏\n${bizName} की तरफ से याद दिलाना था — आपके कुल ₹${msgAmt(pub.pending)} बाकी हैं:\n${billLines.join('\n')}\nजब समय मिले, कृपया भेज दीजिएगा। धन्यवाद!`;
-  } else {
+  } else if (hg) {
     msg = `Namaste ${pub.name} ji 🙏\n${bizName} se yaad dilana tha — aapke kul ₹${msgAmt(pub.pending)} baaki hain:\n${billLines.join('\n')}\nJab samay mile, kripya bhej dijiyega. Dhanyavaad!`;
+  } else {
+    msg = `Hello ${pub.name} 🙏\nA friendly reminder from ${bizName} — a total of ₹${msgAmt(pub.pending)} is pending:\n${billLines.join('\n')}\nPlease pay when convenient. Thank you!`;
   }
   // Updates Stage A: payment line for the customer's TOTAL pending —
   // only when a UPI ID is set (buildUpiUri is null otherwise).
@@ -2817,6 +3085,7 @@ app.get('/api/customers/:id/reminder-link', requireAuth, requireBillingAccess, a
   if (remindPayUri) {
     msg += hi
       ? `\nUPI से पेमेंट करें: ${biz.upi_id}\n${remindPayUri}`
+      : hg ? `\nUPI se payment karein: ${biz.upi_id}\n${remindPayUri}`
       : `\nPay on UPI: ${biz.upi_id}\n${remindPayUri}`;
   }
   res.json({ phone, url: 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), message: msg });
@@ -3574,7 +3843,11 @@ async function buildGstr1(bizId, range) {
   };
 }
 
-const GSTR1_NOTE = 'Ye portal-ready file hai — filing GST portal par hogi, app ke andar nahi. File ke andar bill ki chhoot (discount) items par bant-ti hai, isliye file ka kul GST upar wale GST-report kul se chhoot ke tax hisse jitna alag ho sakta hai; bina chhoot wale mahine me dono bilkul barabar hote hain.';
+const GSTR1_NOTES = {
+  en: 'This is a portal-ready file — filing happens on the GST portal, not inside the app. Inside the file, a bill discount is spread across its items, so the file\'s total GST can differ from the GST report total by the tax share of discounts; in months without discounts the two match exactly.',
+  hi: 'ये portal के लिए तैयार file है — filing GST portal पर होगी, app के अंदर नहीं। File में बिल की छूट (discount) items पर बँटती है, इसलिए file का कुल GST ऊपर वाले GST report से छूट के tax हिस्से जितना अलग हो सकता है; बिना छूट वाले महीने में दोनों बिल्कुल बराबर होते हैं।',
+  hg: 'Ye portal-ready file hai — filing GST portal par hogi, app ke andar nahi. File ke andar bill ki chhoot (discount) items par bant-ti hai, isliye file ka kul GST upar wale GST-report kul se chhoot ke tax hisse jitna alag ho sakta hai; bina chhoot wale mahine me dono bilkul barabar hote hain.'
+};
 
 app.get('/api/reports/gstr1', requireAuth, requireOwner, async (req, res) => {
   const range = monthFromQuery(req);
@@ -3593,7 +3866,8 @@ app.get('/api/reports/gstr1', requireAuth, requireOwner, async (req, res) => {
     });
   }
   const { portal_file, invoices, ...summary } = g;
-  res.json({ ...summary, note: GSTR1_NOTE });
+  const gb = await getBusiness(req.user.business_id);
+  res.json({ ...summary, note: GSTR1_NOTES[(gb && gb.language) || 'en'] || GSTR1_NOTES.en });
 });
 
 app.get('/api/reports/gstr1/download', requireAuth, requireOwner, async (req, res) => {
@@ -3860,8 +4134,9 @@ app.get('/api/reports/day-end/whatsapp-link', requireAuth, requireOwner, async (
   const biz = await getBusiness(bizId);
   const phone = normalizePhone(req.query.phone !== undefined ? String(req.query.phone) : (biz ? biz.phone : ''));
   if (!phone) return res.status(400).json({ error: 'shop_phone_missing' });
-  const bizName = (biz && biz.name) || 'Business OS';
+  const bizName = (biz && biz.name) || 'BizYour';
   const hi = !!(biz && biz.language === 'hi');
+  const hg = !!(biz && biz.language === 'hg');
   const r = await dayEndReport(bizId, date);
   let msg;
   if (hi) {
@@ -3872,6 +4147,14 @@ app.get('/api/reports/day-end/whatsapp-link', requireAuth, requireOwner, async (
     msg += `\nनया उधार दिया: ₹${msgAmt(r.new_credit_given)}`;
     msg += `\nखर्चा: ₹${msgAmt(r.expenses.total)}`;
     msg += `\nसप्लायर को दिया: ₹${msgAmt(r.supplier_payments.total)}`;
+  } else if (hg) {
+    msg = `🌙 *${bizName} — Aaj ka hisaab* (${date})`;
+    msg += `\nBikri: ₹${msgAmt(r.sales.total)} (${r.sales.bills_count} bill)`;
+    if (r.sales.returns_total > 0) msg += `\nWapsi: −₹${msgAmt(r.sales.returns_total)}`;
+    msg += `\nVasooli: ₹${msgAmt(r.collections.total)} (Cash ₹${msgAmt(r.collections.cash)} · UPI ₹${msgAmt(r.collections.upi)}${r.collections.other > 0 ? ` · Anya ₹${msgAmt(r.collections.other)}` : ''})`;
+    msg += `\nNaya udhaar diya: ₹${msgAmt(r.new_credit_given)}`;
+    msg += `\nKharcha: ₹${msgAmt(r.expenses.total)}`;
+    msg += `\nSupplier ko diya: ₹${msgAmt(r.supplier_payments.total)}`;
   } else {
     msg = `🌙 *${bizName} — Day-End Report* (${date})`;
     msg += `\nSale: ₹${msgAmt(r.sales.total)} (${r.sales.bills_count} bills)`;
@@ -4114,7 +4397,7 @@ app.post('/api/backups/:id/restore', requireAuth, requireOwner, async (req, res)
       // not silently wipe a UPI ID the owner set after taking it.
       let bizSql = 'UPDATE businesses SET name=?, owner_name=?, phone=?, city=?, gst_enabled=?, gstin=?, language=?';
       const bizVals = [brow.name || '', brow.owner_name || '', brow.phone || '', brow.city || '',
-        brow.gst_enabled ? 1 : 0, brow.gstin || '', brow.language === 'hi' ? 'hi' : 'en'];
+        brow.gst_enabled ? 1 : 0, brow.gstin || '', (['hi', 'hg'].includes(brow.language) ? brow.language : 'en')];
       if (brow.upi_id !== undefined || brow.upi_payee_name !== undefined) {
         bizSql += ', upi_id=?, upi_payee_name=?';
         bizVals.push(brow.upi_id || '', brow.upi_payee_name || '');
@@ -4832,7 +5115,7 @@ async function applySyncPayload(bizId, payload, deviceId) {
         await db.run(
           `UPDATE businesses SET name=?, owner_name=?, phone=?, city=?, gst_enabled=?, gstin=?, language=?, upi_id=?, upi_payee_name=?, updated_at=?, sync_status='synced' WHERE id=?`
         , inc.fields.name || '', inc.fields.owner_name || '', inc.fields.phone || '', inc.fields.city || '',
-          inc.fields.gst_enabled ? 1 : 0, inc.fields.gstin || '', inc.fields.language === 'hi' ? 'hi' : 'en',
+          inc.fields.gst_enabled ? 1 : 0, inc.fields.gstin || '', (['hi', 'hg'].includes(inc.fields.language) ? inc.fields.language : 'en'),
           inc.fields.upi_id || '', inc.fields.upi_payee_name || '',
           inc.updated_at, bizId);
         res.applied++;
@@ -5054,6 +5337,11 @@ app.get('/api/sync/conflicts', requireAuth, requireOwner, async (req, res) => {
   });
 });
 
+// ---------- BizYour: Business Mart (B2B marketplace) ----------
+// Lives in mart.js; registered here so it sits behind the subscription
+// guard (read-only shops cannot post/quote/order) and before the 404.
+require('./mart').registerMart(app, { db, requireAuth, requireOwner, auditLog, round2, validNum, queueSync });
+
 // ---------- Stage 6: API fallbacks ----------
 // Unknown /api/* routes get a JSON 404 (never the SPA HTML).
 app.use('/api', async (req, res) => {
@@ -5067,11 +5355,12 @@ app.use('/api', async (req, res) => {
 // CSS/JS, values rendered via textContent only (no HTML injection from
 // shop/customer names). noindex: a customer's hisab is not for search.
 const HISAB_PAGE_HTML = `<!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png">
 <title>Mera Hisab</title>
 <style>
   * { box-sizing: border-box; }
@@ -5099,9 +5388,9 @@ const HISAB_PAGE_HTML = `<!DOCTYPE html>
 <body>
 <div class="wrap">
   <div class="shop" id="shopName">…</div>
-  <h1 id="custName">Mera Hisab</h1>
-  <div class="sub">Bills aur payments — live hisab</div>
-  <div id="content"><div class="sub">Hisab load ho raha hai…</div></div>
+  <h1 id="custName">…</h1>
+  <div class="sub" id="subLine"></div>
+  <div id="content"><div class="sub">…</div></div>
   <div class="foot" id="foot"></div>
 </div>
 <script>
@@ -5114,39 +5403,48 @@ const HISAB_PAGE_HTML = `<!DOCTYPE html>
     if (text !== undefined) e.textContent = text;
     return e;
   }
+  var S = {
+    en: { sub: 'Bills and payments — live account', title: 'Account', due: 'Total balance (to pay)', credit: 'You have a credit', clear: 'Account is clear', bills: 'Bills', noBills: 'No bills', opening: 'Previous balance (Opening Balance)', bal: 'Balance ', paid: 'Fully paid', pays: 'Payments (made by you)', noPays: 'No payments yet', foot: function (n) { return 'This account is live from ' + n + "'s app"; }, off: 'Link is off', offMsg: 'This account link no longer works. Please ask the shop for a new link.' },
+    hi: { sub: 'बिल और पेमेंट — लाइव हिसाब', title: 'हिसाब', due: 'कुल बाकी (देना है)', credit: 'आपका जमा है', clear: 'हिसाब साफ़ है', bills: 'बिल', noBills: 'कोई बिल नहीं है', opening: 'पिछला बाकी (Opening Balance)', bal: 'बाकी ', paid: 'पूरा मिला', pays: 'पेमेंट (जो आपने दिए)', noPays: 'अभी कोई पेमेंट नहीं है', foot: function (n) { return 'ये हिसाब ' + n + ' के app से लाइव है'; }, off: 'लिंक बंद है', offMsg: 'ये हिसाब लिंक अब काम नहीं कर रहा। दुकान से नया लिंक माँगें।' },
+    hg: { sub: 'Bills aur payments — live hisaab', title: 'Hisaab', due: 'Kul baaki (dena hai)', credit: 'Aapka credit hai', clear: 'Hisaab clear hai', bills: 'Bills', noBills: T.noBills, opening: T.opening, bal: 'Baaki ', paid: 'Poora mila', pays: T.pays, noPays: T.noPays, foot: function (n) { return 'Ye hisaab ' + n + ' ke app se live hai'; }, off: 'Link band hai', offMsg: 'Ye hisaab link ab kaam nahi kar raha. Dukaan se naya link maangein.' }
+  };
+  var T = S.en;
   fetch('/api/public/hisab/' + encodeURIComponent(token))
     .then(function (r) { if (!r.ok) throw new Error('nf'); return r.json(); })
     .then(function (d) {
+      T = S[d.business.language] || S.en;
+      document.documentElement.lang = d.business.language === 'hi' ? 'hi' : 'en';
+      document.getElementById('subLine').textContent = T.sub;
       document.getElementById('shopName').textContent = d.business.name;
       document.getElementById('custName').textContent = d.customer.name;
-      document.title = d.customer.name + ' — Hisab · ' + d.business.name;
+      document.title = d.customer.name + ' — ' + T.title + ' · ' + d.business.name;
       var c = document.getElementById('content');
       c.textContent = '';
       var b = el('div', 'baaki');
-      b.appendChild(el('div', 'lbl', d.pending > 0 ? 'Kul baaki (dena hai)' : (d.pending < 0 ? 'Aapka credit hai' : 'Hisab clear hai')));
+      b.appendChild(el('div', 'lbl', d.pending > 0 ? T.due : (d.pending < 0 ? T.credit : T.clear)));
       var amt = el('div', 'amt' + (d.pending <= 0 ? ' clear' : ''), inr(Math.abs(d.pending)));
       b.appendChild(amt);
       c.appendChild(b);
       var bills = el('div', 'card');
-      bills.appendChild(el('h2', null, 'Bills'));
-      if (!d.bills.length) bills.appendChild(el('div', 'row', 'Koi bill nahi hai'));
+      bills.appendChild(el('h2', null, T.bills));
+      if (!d.bills.length) bills.appendChild(el('div', 'row', T.noBills));
       d.bills.forEach(function (x) {
         var row = el('div', 'row');
         var left = el('div');
-        left.appendChild(el('div', null, (x.kind === 'opening' ? 'Pichhla baaki (Opening Balance)' : 'Bill #' + x.bill_no)));
+        left.appendChild(el('div', null, (x.kind === 'opening' ? T.opening : 'Bill #' + x.bill_no)));
         left.appendChild(el('div', 'meta', x.date));
         var right = el('div', 'r');
         right.appendChild(el('div', null, inr(x.total)));
         right.appendChild(el('div', 'meta', x.balance > 0 ? '' : ''));
-        var st = el('div', x.balance > 0 ? 'bal' : 'paid', x.balance > 0 ? 'Baaki ' + inr(x.balance) : 'Poora mila');
+        var st = el('div', x.balance > 0 ? 'bal' : 'paid', x.balance > 0 ? T.bal + inr(x.balance) : T.paid);
         right.appendChild(st);
         row.appendChild(left); row.appendChild(right);
         bills.appendChild(row);
       });
       c.appendChild(bills);
       var pays = el('div', 'card');
-      pays.appendChild(el('h2', null, 'Payments (jo aapne diye)'));
-      if (!d.payments.length) pays.appendChild(el('div', 'row', 'Abhi koi payment nahi hai'));
+      pays.appendChild(el('h2', null, T.pays));
+      if (!d.payments.length) pays.appendChild(el('div', 'row', T.noPays));
       d.payments.forEach(function (p) {
         var row = el('div', 'row');
         var left = el('div');
@@ -5157,14 +5455,14 @@ const HISAB_PAGE_HTML = `<!DOCTYPE html>
         pays.appendChild(row);
       });
       c.appendChild(pays);
-      document.getElementById('foot').textContent = 'Ye hisab ' + d.business.name + ' ke app se live hai';
+      document.getElementById('foot').textContent = T.foot(d.business.name);
     })
     .catch(function () {
       document.getElementById('shopName').textContent = '';
-      document.getElementById('custName').textContent = 'Link band hai';
+      document.getElementById('custName').textContent = T.off;
       var c = document.getElementById('content');
       c.textContent = '';
-      c.appendChild(el('div', 'err', 'Ye hisab link ab kaam nahi kar raha. Dukaan se naya link maangein.'));
+      c.appendChild(el('div', 'err', T.offMsg));
     });
 })();
 </script>
@@ -5245,7 +5543,7 @@ db.init().then(async () => {
     if (syTimer.unref) syTimer.unref();
   }
   app.listen(PORT, () => {
-    console.log(`Business OS v3 running at http://localhost:${PORT} — mode: ${db.mode}, db: ${db.engine}`);
+    console.log(`BizYour (Workspace + Business Mart) running at http://localhost:${PORT} — mode: ${db.mode}, db: ${db.engine}`);
   });
 }).catch((e) => {
   console.error('Database init failed:', e);
