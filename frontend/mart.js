@@ -105,6 +105,8 @@
   // ---------- nav ----------
   const TITLES = {
     home: ['Business Mart', 'बिज़नेस मार्ट'], post: ['Post a purchase inquiry', 'खरीद की inquiry डालो'],
+    bulk: ['Bulk inquiry — many sellers', 'Bulk inquiry — कई sellers'], favourites: ['Mere Wholesaler', 'मेरे Wholesaler'],
+    seller: ['Seller rate list', 'Seller की rate list'], report: ['Mart Report', 'Mart Report'],
     inquiries: ['My inquiries', 'मेरी inquiries'], inquiry: ['Inquiry', 'Inquiry'], browse: ['Browse the Mart', 'Mart देखो'],
     orders: ['Mart orders', 'Mart ऑर्डर'], leads: ['Buyer leads', 'खरीदार leads'], sent: ['Quotes sent', 'भेजे गए quotes'],
     catalog: ['My Mart catalog', 'मेरा Mart catalog'], profile: ['Mart profile', 'Mart प्रोफ़ाइल'], notifs: ['Mart notifications', 'Mart सूचनाएं']
@@ -115,11 +117,13 @@
     $('martNav').innerHTML = `
       <div class="mk-seg"><button class="${M.mode === 'buy' ? 'on' : ''}" data-act="mode" data-m="buy">${L('Buying', 'खरीदना')}</button><button class="${M.mode === 'sell' ? 'on' : ''}" data-act="mode" data-m="sell">${L('Selling', 'बेचना')}</button></div>
       ${M.mode === 'buy'
-        ? n('home', '🛒', 'Mart home', 'मार्ट होम') + n('post', '➕', 'Post inquiry', 'Inquiry डालो') + n('inquiries', '📋', 'My inquiries', 'मेरी inquiries', s.buying.new_quotes) + n('browse', '🔍', 'Browse', 'देखो') + n('orders', '🚚', 'Orders', 'ऑर्डर', s.buying.active_orders)
+        ? n('home', '🛒', 'Mart home', 'मार्ट होम') + n('post', '➕', 'Post inquiry', 'Inquiry डालो') + n('bulk', '📣', 'Bulk inquiry', 'Bulk inquiry') + n('inquiries', '📋', 'My inquiries', 'मेरी inquiries', s.buying.new_quotes) + n('browse', '🔍', 'Browse', 'देखो') + n('favourites', '⭐', 'Mere Wholesaler', 'मेरे Wholesaler') + n('orders', '🚚', 'Orders', 'ऑर्डर', s.buying.active_orders) + n('report', '📊', 'Mart Report', 'Mart Report')
         : n('leads', '🎯', 'Leads', 'Leads', s.selling.is_seller ? s.selling.new_leads : 0) + n('sent', '📤', 'Quotes sent', 'भेजे quotes') + n('orders', '🚚', 'Orders', 'ऑर्डर', s.selling.active_orders) + n('catalog', '🏷️', 'My catalog', 'मेरा catalog') + n('profile', '🪪', 'Mart profile', 'Mart प्रोफ़ाइल')}
-      ${n('notifs', '🔔', 'Notifications', 'सूचनाएं', s.unread)}`;
+      ${n('notifs', '🔔', 'Notifications', 'सूचनाएं', s.unread)}
+      <button class="nav-item" data-act="logout"><span class="ic">🚪</span><span>${L('Log out', 'लॉगआउट')}</span></button>`;
   }
   ACT.nav = (d) => go(d.v);
+  ACT.logout = () => { const b = $('logoutBtn'); if (b) b.click(); };
   ACT.mode = (d) => { M.mode = d.m; go(d.m === 'buy' ? 'home' : 'leads'); };
 
   async function go(view, arg) {
@@ -140,6 +144,22 @@
   const V = {};
   const empty = (e, txt) => `<div class="mk-empty"><div class="e">${e}</div>${txt}</div>`;
   const gstBadge = (s) => s.gst_registered ? `<span class="mk-gst" title="${L('GSTIN added by this business', 'इस business ने GSTIN डाला है')}">✔ GST</span>` : '';
+  const verifiedBadge = (s) => s && s.verified ? `<span class="mk-verified" title="${L('Verified: valid GSTIN, phone and city on file', 'Verified: सही GSTIN, phone और शहर दर्ज है')}">✓ Verified</span>` : '';
+  // Payment-term split from a quote/order: "Advance 20% · 15 din credit".
+  const termsTxt = (x) => {
+    const parts = [];
+    if (x.advance_percent != null) parts.push(`${L('Advance', 'Advance')} ${fmtQty(x.advance_percent)}%`);
+    if (x.credit_days != null) parts.push(`${x.credit_days} ${L('days credit', 'दिन credit')}`);
+    return parts.length ? `<span class="mk-terms">${parts.join(' · ')}</span>` : '';
+  };
+  const favBtn = (s) => `<button class="mk-fav ${s.is_favourite ? 'on' : ''}" data-act="fav" data-id="${s.business_id}" title="${L('Save to Mere Wholesaler', 'Mere Wholesaler में जोड़ो')}">${s.is_favourite ? '★' : '☆'}</button>`;
+  ACT.fav = async (d, el) => {
+    try {
+      if (el.classList.contains('on')) { await api('DELETE', '/api/mart/favourites/' + d.id); toast(L('Removed from Mere Wholesaler', 'Mere Wholesaler से हटाया')); }
+      else { await api('POST', '/api/mart/favourites/' + d.id); toast(`⭐ ${L('Saved to Mere Wholesaler', 'Mere Wholesaler में जुड़ा')}`); }
+      if (M.view === 'browse') V.browse(); else if (M.view === 'seller') go('seller', M.arg); else if (M.view === 'favourites') V.favourites();
+    } catch (e) { toast(errText(e)); }
+  };
   const ratingTxt = (s) => s.rating ? `★ ${s.rating} (${s.ratings_count})` : (s.deals ? L('No ratings yet', 'अभी rating नहीं') : L('New on Mart', 'Mart पर नया'));
   const dealsTxt = (s) => `${s.deals} ${s.deals === 1 ? L('deal', 'सौदा') : L('deals', 'सौदे')}`;
 
@@ -196,8 +216,8 @@
         <div class="card">
           <div class="mk-row"><h3>${L('On the Mart', 'Mart पर')}</h3><button class="btn btn-ghost btn-sm" data-act="nav" data-v="browse">${L('Browse', 'देखो')}</button></div>
           ${popular.length ? popular.map((l) => `
-            <div class="mk-li"><div class="mk-ic">${ic(l.category)}</div>
-              <div style="flex:1"><b>${esc(l.name)}</b><small><a data-act="seller" data-id="${l.business_id}">${esc(l.seller.name)}</a> · ${L('min', 'कम से कम')} ${fmtQty(l.moq)} ${esc(l.unit)}</small></div>
+            <div class="mk-li">${l.photo ? `<img class="mk-thumb" src="${l.photo}" alt="">` : `<div class="mk-ic">${ic(l.category)}</div>`}
+              <div style="flex:1"><b>${esc(l.name)}</b><small><a data-act="seller" data-id="${l.business_id}">${esc(l.seller.name)}</a>${verifiedBadge(l.seller)} · ${L('min', 'कम से कम')} ${fmtQty(l.moq)} ${esc(l.unit)}</small></div>
               <div style="text-align:right"><b>${rs(l.price)}/${esc(l.unit)}</b><div><button class="btn btn-soft btn-sm" style="margin-top:4px" data-act="quoteListing" data-id="${l.id}">${L('Get quote', 'Quote मांगो')}</button></div></div></div>`).join('')
             : empty('🏷️', L('No listings yet.', 'अभी कोई listing नहीं।'))}
         </div>
@@ -296,7 +316,7 @@
       <div class="toolbar"><div style="flex:1"><h3>${L('All purchase inquiries', 'सारी खरीद inquiries')}</h3><div class="hint" style="margin:0">${L('Everything you have asked the market for', 'जो भी आपने मार्केट से मांगा')}</div></div><button class="btn btn-blue" data-act="nav" data-v="post">+ ${L('Post inquiry', 'Inquiry डालो')}</button></div>
       ${r.inquiries.length ? `<div class="mk-scroll"><table><thead><tr><th>${L('Product', 'सामान')}</th><th>${L('Qty', 'मात्रा')}</th><th>${L('Target', 'Target')}</th><th>${L('Need by', 'कब तक')}</th><th>${L('Quotes', 'Quotes')}</th><th>${L('Seen by', 'देखा')}</th><th>${L('Status', 'हालत')}</th></tr></thead><tbody>
       ${r.inquiries.map((i) => { const t = INQ_TAG[i.status] || INQ_TAG.open; const tg = i.status === 'open' && i.quotes_count ? ['Quotes in', 'Quotes आए', 'mk-tag-blue'] : t; return `
-        <tr class="mk-click" data-act="openInq" data-id="${i.id}"><td>${ic(i.category)} <b>${esc(i.product)}</b><div class="mk-hint">BM-INQ-${i.id} · ${ago(i.created_at)}${i.source === 'stock' ? ' · ✨ ' + L('from stock', 'stock से') : ''}</div></td>
+        <tr class="mk-click" data-act="openInq" data-id="${i.id}"><td>${ic(i.category)} <b>${esc(i.product)}</b>${i.group_id ? ` <span class="tag mk-tag-blue">${L('Bulk', 'Bulk')}</span>` : ''}<div class="mk-hint">BM-INQ-${i.id} · ${ago(i.created_at)}${i.source === 'stock' ? ' · ✨ ' + L('from stock', 'stock से') : ''}${i.source === 'reorder' ? ' · ↻ ' + L('repeat order', 'dobara order') : ''}${i.source === 'bulk' ? ' · 📣 ' + L('bulk inquiry', 'bulk inquiry') : ''}</div></td>
         <td>${fmtQty(i.qty)} ${esc(i.unit)}</td><td>${i.target_price != null ? rs(i.target_price) : '—'}</td><td>${niceDate(i.need_by)}</td>
         <td>${i.quotes_count}${i.best_price != null ? ` <span class="mk-hint">· ${L('best', 'सबसे कम')} ${rs(i.best_price)}</span>` : ''}</td><td>${i.views} ${L('sellers', 'sellers')}</td>
         <td><span class="tag ${tg[2]}">${L(tg[0], tg[1])}</span></td></tr>`; }).join('')}
@@ -320,6 +340,20 @@
     }
     const tag = INQ_TAG[i.status] || INQ_TAG.open;
     M._inq = r;
+    // Bulk inquiry? Show the sibling copies so all quotes compare in one place.
+    let groupHtml = '';
+    if (i.group_id) {
+      try {
+        const [all, sl] = await Promise.all([api('GET', '/api/mart/inquiries'), api('GET', '/api/mart/sellers')]);
+        const sibs = all.inquiries.filter((x) => x.group_id === i.group_id);
+        if (sibs.length > 1) {
+          const nameOf = (bid) => { const s = sl.sellers.find((y) => y.business_id === bid); return s ? s.name : L('Seller', 'Seller'); };
+          groupHtml = `<div class="card" style="margin-top:12px"><b>📣 ${L('This was a bulk inquiry', 'Ye ek bulk inquiry thi')}</b><div class="mk-hint">${L('The same requirement went to these sellers — compare every quote from here:', 'Wahi requirement in sellers ko gayi thi — saare quotes yahin se milao:')}</div><div class="mk-group-strip">${sibs.map((x) => x.id === i.id
+            ? `<span class="mk-group-chip cur">${esc(nameOf(x.target_business_id))} · ${x.quotes_count} ${L('quote(s)', 'quote(s)')}${x.best_price != null ? ' · ' + L('best', 'sabse kam') + ' ' + rs(x.best_price) : ''} · ${L('you are here', 'aap yahan ho')}</span>`
+            : `<a class="mk-group-chip" data-act="openInq" data-id="${x.id}">${esc(nameOf(x.target_business_id))} · ${x.quotes_count} ${L('quote(s)', 'quote(s)')}${x.best_price != null ? ' · ' + L('best', 'sabse kam') + ' ' + rs(x.best_price) : ''} →</a>`).join('')}</div></div>`;
+        }
+      } catch (e) { /* strip is optional */ }
+    }
     $('martView').innerHTML = `
       <button class="btn btn-ghost btn-sm" data-act="nav" data-v="inquiries">← ${L('All inquiries', 'सारी inquiries')}</button>
       <div class="card" style="margin-top:12px">
@@ -332,6 +366,7 @@
         </div>
         ${r.order ? `<div class="mk-prefill" style="margin-top:12px">✅ ${L('Ordered from', 'ऑर्डर दिया')} <b>${esc(r.order.other_party.name)}</b> — ${r.order.order_no} · ${rs(r.order.total)} · <a data-act="nav" data-v="orders">${L('Track order →', 'ऑर्डर देखो →')}</a></div>` : ''}
       </div>
+      ${groupHtml}
       <div class="mk-row" style="margin:16px 0 10px"><h3>${L('Quotes', 'Quotes')} (${r.quotes.length})</h3>${live.length > 1 ? `<span class="mk-hint">${L('Best value weighs price, delivery, rating, GST and credit', 'Best value = भाव, delivery, rating, GST और उधार मिलाकर')}</span>` : ''}</div>
       ${r.quotes.length ? `<div class="mk-grid3">${r.quotes.map((q) => {
         const s = q.seller; const total = q.price * i.qty;
@@ -343,10 +378,10 @@
         const moqWarn = q.moq && i.qty < q.moq;
         const st = { accepted: ['✓ Accepted', '✓ Accept हुआ', 'tag-paid'], declined: ['Declined', 'मना किया', 'tag-pend'], closed: ['Closed', 'बंद', 'mk-tag-grey'], expired: ['Expired', 'समय ख़त्म', 'mk-tag-grey'], cancelled: ['Order cancelled', 'ऑर्डर रद्द', 'tag-pend'] }[q.status];
         return `<div class="mk-qcard ${q.id === best ? 'best' : ''}">${tg}
-          <div class="mk-row"><a class="mk-sname" data-act="seller" data-id="${s.business_id}">${esc(s.name)}</a>${gstBadge(s)}</div>
-          <div class="mk-hint">${ratingTxt(s)} · ${dealsTxt(s)} · ${esc(s.city)}</div>
+          <div class="mk-row"><a class="mk-sname" data-act="seller" data-id="${s.business_id}">${esc(s.name)}</a>${gstBadge(s)}${verifiedBadge(s)}</div>
+          <div class="mk-hint">${ratingTxt(s)} · ${dealsTxt(s)}${s.repeat_buyers ? ` · ${s.repeat_buyers} ${L('repeat buyers', 'repeat buyers')}` : ''} · ${esc(s.city)}</div>
           <div class="mk-price">${rs(q.price)}<small>/${esc(i.unit)}</small>${diff !== null ? `<em style="color:${diff <= 0 ? 'var(--green)' : 'var(--red)'}">${diff <= 0 ? '▼' : '▲'} ${Math.abs(diff).toFixed(1)}% ${L('vs target', 'target से')}</em>` : ''}</div>
-          <div class="mk-kv"><span>${L('Total', 'कुल')}</span><b>${rs(total)}</b><span>${L('Delivery', 'Delivery')}</span><b>${q.delivery_days} ${L('day(s)', 'दिन')}</b><span>${L('Payment', 'Payment')}</span><b>${esc(q.payment_terms)}</b><span>${L('Min. order', 'कम से कम')}</span><b style="${moqWarn ? 'color:var(--red)' : ''}">${fmtQty(q.moq)} ${esc(i.unit)}</b><span>${L('Valid', 'Valid')}</span><b>${q.valid_days} ${L('days', 'दिन')}</b></div>
+          <div class="mk-kv"><span>${L('Total', 'कुल')}</span><b>${rs(total)}</b><span>${L('Delivery', 'Delivery')}</span><b>${q.delivery_days} ${L('day(s)', 'दिन')}</b><span>${L('Payment', 'Payment')}</span><b>${esc(q.payment_terms)}</b>${(q.advance_percent != null || q.credit_days != null) ? `<span>${L('Advance / Credit', 'Advance / Credit')}</span><b>${termsTxt(q)}</b>` : ''}<span>${L('Min. order', 'कम से कम')}</span><b style="${moqWarn ? 'color:var(--red)' : ''}">${fmtQty(q.moq)} ${esc(i.unit)}</b><span>${L('Valid', 'Valid')}</span><b>${q.valid_days} ${L('days', 'दिन')}</b></div>
           ${moqWarn ? `<div class="mk-hint" style="color:var(--red)">${L('Your quantity is below this minimum.', 'आपकी मात्रा इस minimum से कम है।')}</div>` : ''}
           ${q.note ? `<div class="mk-hint">“${esc(q.note)}”</div>` : ''}
           ${st ? `<div style="margin-top:10px"><span class="tag ${st[2]}">${L(st[0], st[1])}</span>${q.messages ? ` <a class="mk-hint" data-act="chat" data-id="${q.id}">💬 ${q.messages}</a>` : ''}</div>`
@@ -373,13 +408,133 @@
   ACT.accept = (d) => {
     const i = M._inq.inquiry; const q = M._inq.quotes.find((x) => String(x.id) === d.id);
     openModal(`<h2>${L('Place order with', 'ऑर्डर दें')} ${esc(q.seller.name)}?</h2><div class="hint">${L('The seller gets the order right away. When the goods arrive, mark it received and it is added to Workspace → Purchases with stock.', 'Seller को तुरंत ऑर्डर मिलेगा। माल आने पर "Received" करो — Workspace → खरीद और stock में जुड़ जाएगा।')}</div>
-      <div class="mk-kv" style="margin:14px 0"><span>${L('Item', 'सामान')}</span><b>${esc(i.product)}</b><span>${L('Quantity', 'मात्रा')}</span><b>${fmtQty(i.qty)} ${esc(i.unit)}</b><span>${L('Rate', 'भाव')}</span><b>${rs(q.price)}/${esc(i.unit)}</b><span>${L('Payment', 'Payment')}</span><b>${esc(q.payment_terms)}</b><span>${L('Delivery', 'Delivery')}</span><b>${q.delivery_days} ${L('day(s)', 'दिन')}</b><span style="color:var(--ink);font-weight:700">${L('Total', 'कुल')}</span><b style="font-size:17px">${rs(q.price * i.qty)}</b></div>
+      <div class="mk-kv" style="margin:14px 0"><span>${L('Item', 'सामान')}</span><b>${esc(i.product)}</b><span>${L('Quantity', 'मात्रा')}</span><b>${fmtQty(i.qty)} ${esc(i.unit)}</b><span>${L('Rate', 'भाव')}</span><b>${rs(q.price)}/${esc(i.unit)}</b><span>${L('Payment', 'Payment')}</span><b>${esc(q.payment_terms)}</b>${(q.advance_percent != null || q.credit_days != null) ? `<span>${L('Advance / Credit', 'Advance / Credit')}</span><b>${termsTxt(q)}</b>` : ''}<span>${L('Delivery', 'Delivery')}</span><b>${q.delivery_days} ${L('day(s)', 'दिन')}</b><span style="color:var(--ink);font-weight:700">${L('Total', 'कुल')}</span><b style="font-size:17px">${rs(q.price * i.qty)}</b></div>
       <div class="mk-mfoot"><button class="btn btn-ghost" data-act="close">${L('Cancel', 'रद्द')}</button><button class="btn mk-green" data-act="acceptYes" data-id="${q.id}">${L('Confirm order', 'ऑर्डर पक्का करो')}</button></div>`);
   };
   ACT.acceptYes = async (d, el) => {
     el.disabled = true;
     try { const r = await api('POST', `/api/mart/quotes/${d.id}/accept`); closeModal(); toast(`✅ ${L('Order', 'ऑर्डर')} ${r.order.order_no} ${L('placed', 'दिया गया')}`); M.mode = 'buy'; go('orders'); }
     catch (e) { el.disabled = false; toast(errText(e)); }
+  };
+
+  // ---------- BUY: bulk inquiry (one requirement, many sellers) ----------
+  V.bulk = async () => {
+    const meta = M.meta || (M.meta = await api('GET', '/api/mart/meta'));
+    const sl = await api('GET', '/api/mart/sellers');
+    const sellers = sl.sellers.filter((s) => !s.mine);
+    M._bulkSellers = sellers;
+    const city = (M.profile && M.profile.city) || (me.business.city) || '';
+    $('martView').innerHTML = `
+      <div class="grid2">
+        <form class="card" id="mkBulkForm">
+          <div class="mk-prefill">📣 ${L('One inquiry goes separately to every seller you tick. Each seller quotes on their own copy — you compare all quotes together under My inquiries.', 'Ek inquiry har tick kiye seller ko alag jayegi. Har seller apni copy par quote dega — saare quotes My inquiries me ek saath milenge.')}</div>
+          <div class="err" id="mkBulkErr"></div>
+          <div class="field"><label>${L('What do you want to buy? *', 'क्या खरीदना है? *')}</label><input class="input" name="product" required maxlength="120" placeholder="${L('e.g. Toor Dal', 'जैसे Toor Dal')}"></div>
+          <div class="row2">
+            <div class="field"><label>${L('Category *', 'Category *')}</label><select class="input" name="category">${meta.categories.map((c) => `<option ${c === 'Staples' ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+            <div class="field"><label>${L('Quantity *', 'मात्रा *')}</label><div style="display:flex;gap:8px"><input class="input" name="qty" type="number" min="0.01" step="any" required><select class="input" name="unit" style="width:120px">${meta.units.map((u) => `<option ${u === 'kg' ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label>${L('Target price per unit (optional)', 'प्रति unit target भाव (optional)')}</label><input class="input" name="target_price" type="number" min="0" step="any" placeholder="₹"></div>
+            <div class="field"><label>${L('Need it by *', 'कब तक चाहिए *')}</label><input class="input" name="need_by" type="date" required min="${dayPlus(0)}" value="${dayPlus(3)}"></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label>${L('Deliver to (city) *', 'Delivery शहर *')}</label><input class="input" name="city" required value="${esc(city)}"></div>
+            <div class="field"><label>${L('How often?', 'कितनी बार?')}</label><select class="input" name="frequency">${meta.frequencies.map((f) => `<option>${f}</option>`).join('')}</select></div>
+          </div>
+          <div class="field"><label>${L('Quality, brand or packing details', 'Quality, brand या packing')}</label><textarea class="input" name="notes" rows="2" maxlength="500"></textarea></div>
+          <label class="tgl-row"><div class="t-txt"><b>${L('Show my business name', 'मेरा नाम दिखाओ')}</b><span>${L('Off = sellers see "A business in your city" until you order', 'Off = order तक sellers को "आपके शहर का एक business" दिखेगा')}</span></div><span class="switch"><input type="checkbox" name="show_name" checked><span class="slider"></span></span></label>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button type="button" class="btn btn-ghost" data-act="nav" data-v="home">${L('Cancel', 'रद्द करो')}</button><button class="btn btn-blue" type="submit">${L('Send to selected sellers', 'Chune sellers ko bhejo')}</button></div>
+        </form>
+        <div class="card">
+          <div class="mk-row"><h3>${L('Choose sellers', 'Sellers chuno')}</h3><button type="button" class="btn btn-ghost btn-sm" id="mkBulkMatch">${L('Tick matching', 'Matching chuno')}</button></div>
+          <div class="hint">${L('Matching = sells this category and delivers to your city. Your own city comes first.', 'Matching = is category ka bechta hai aur aapke sheher deliver karta hai. Aapka sheher pehle aata hai.')}</div>
+          <input class="input" id="mkBulkSearch" placeholder="${L('Search seller or city…', 'Seller ya sheher khojo…')}" style="margin-bottom:10px">
+          <div id="mkBulkList">${bulkSellerRows(sellers, '')}</div>
+          <div class="mk-hint" id="mkBulkCount" style="margin-top:8px"></div>
+        </div>
+      </div>`;
+    const f = $('mkBulkForm');
+    const updCount = () => { const n = f.querySelectorAll('input[name="seller_ids"]:checked').length; $('mkBulkCount').textContent = `${n} ${L('seller(s) selected', 'seller chune')}`; };
+    $('mkBulkList').addEventListener('change', updCount); updCount();
+    $('mkBulkSearch').addEventListener('input', (e) => { $('mkBulkList').innerHTML = bulkSellerRows(sellers, e.target.value.trim().toLowerCase(), f); updCount(); });
+    $('mkBulkMatch').addEventListener('click', () => {
+      const cat = f.category.value, c = f.city.value.trim().toLowerCase();
+      f.querySelectorAll('input[name="seller_ids"]').forEach((cb) => {
+        const s = sellers.find((x) => String(x.business_id) === cb.value);
+        if (s) cb.checked = s.categories.includes(cat) && (s.all_india || s.city.toLowerCase() === c || s.service_cities.some((x) => x.toLowerCase() === c));
+      });
+      updCount();
+    });
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault(); hideErr('mkBulkErr');
+      const ids = [...f.querySelectorAll('input[name="seller_ids"]:checked')].map((cb) => Number(cb.value));
+      if (!ids.length) { showErr('mkBulkErr', L('Tick at least one seller.', 'Kam se kam ek seller tick karo.')); return; }
+      const body = {
+        product: f.product.value.trim(), category: f.category.value, qty: Number(f.qty.value), unit: f.unit.value,
+        target_price: f.target_price.value === '' ? null : Number(f.target_price.value),
+        need_by: f.need_by.value, city: f.city.value.trim(), frequency: f.frequency.value, notes: f.notes.value.trim(),
+        show_name: f.show_name.checked, seller_ids: ids
+      };
+      try {
+        const r = await api('POST', '/api/mart/inquiries/bulk', body);
+        toast(`📣 ${L('Inquiry sent to', 'Inquiry gayi')} ${r.notified} ${L('sellers', 'sellers ko')}`);
+        go('inquiries');
+      } catch (err) { showErr('mkBulkErr', errText(err)); }
+    });
+  };
+  function bulkSellerRows(sellers, q, form) {
+    const checked = form ? new Set([...form.querySelectorAll('input[name="seller_ids"]:checked')].map((cb) => cb.value)) : new Set();
+    const rows = sellers.filter((s) => !q || s.name.toLowerCase().includes(q) || s.city.toLowerCase().includes(q));
+    if (!rows.length) return `<div class="mk-hint">${L('No sellers found.', 'Koi seller nahi mila.')}</div>`;
+    return rows.map((s) => `
+      <label class="mk-li" style="cursor:pointer"><input type="checkbox" name="seller_ids" value="${s.business_id}" ${checked.has(String(s.business_id)) ? 'checked' : ''} style="width:17px;height:17px">
+        <div style="flex:1"><b>${esc(s.name)}</b>${gstBadge(s)}${verifiedBadge(s)}<small>${esc(s.city)} · ${ratingTxt(s)} · ${s.categories.map(esc).join(', ')}</small></div></label>`).join('');
+  }
+
+  // ---------- BUY: Mere Wholesaler (favourites) ----------
+  V.favourites = async () => {
+    const r = await api('GET', '/api/mart/favourites');
+    M._favs = r.favourites;
+    $('martView').innerHTML = `<div class="card">
+      <div class="toolbar"><div style="flex:1"><h3>⭐ ${L('Mere Wholesaler — your saved sellers', 'Mere Wholesaler — aapke save sellers')}</h3><div class="hint" style="margin:0">${L('The wholesalers you buy from again and again, one tap away.', 'Jin wholesalers se baar-baar kharidte ho, ek tap door.')}</div></div><button class="btn btn-blue" data-act="nav" data-v="browse">${L('Find sellers', 'Sellers khojo')}</button></div>
+      ${r.favourites.length ? `<div class="mk-grid3">${r.favourites.map((s) => `
+        <div class="card"><div class="mk-row"><a class="mk-sname" data-act="seller" data-id="${s.business_id}">${esc(s.name)}</a><span>${favBtn(s)}</span></div>
+          <div>${gstBadge(s)}${verifiedBadge(s)}</div>
+          <div class="mk-hint">${esc(s.area ? s.area + ', ' : '')}${esc(s.city)} · ${ratingTxt(s)} · ${dealsTxt(s)}${s.repeat_buyers ? ` · ${s.repeat_buyers} ${L('repeat buyers', 'repeat buyers')}` : ''}</div>
+          <div class="mk-chips" style="margin:8px 0">${s.categories.map((c) => `<span class="mk-chip">${ic(c)} ${esc(c)}</span>`).join('')}</div>
+          <div style="display:flex;gap:8px"><button class="btn btn-blue btn-sm" data-act="favInq" data-id="${s.business_id}">${L('Send inquiry', 'Inquiry bhejo')}</button><button class="btn btn-ghost btn-sm" data-act="seller" data-id="${s.business_id}">${L('Rate list', 'Rate list')}</button></div>
+        </div>`).join('')}</div>`
+      : empty('⭐', L('No saved wholesalers yet. Tap the ☆ star on any seller to save them here.', 'Abhi koi wholesaler save nahi. Kisi seller par ☆ star dabao, wo yahan aa jayega.'))}
+    </div>`;
+  };
+  ACT.favInq = (d) => {
+    const s = (M._favs || []).find((x) => String(x.business_id) === d.id);
+    M.mode = 'buy';
+    go('post', { target_business_id: Number(d.id), target_name: s ? s.name : '' });
+  };
+
+  // ---------- BUY: Mart margin report ----------
+  V.report = async () => {
+    const r = await api('GET', '/api/mart/report');
+    const t = r.totals;
+    $('martView').innerHTML = `
+      <div class="stats">
+        <div class="stat"><div class="lbl">💰 ${L('Total Mart spend', 'Mart par kul kharcha')}</div><div class="val">${rs(t.spend_all)}</div><div class="sub">${L('All orders, all time', 'Saare orders, ab tak')}</div></div>
+        <div class="stat"><div class="lbl">📦 ${L('Delivered orders', 'Delivered orders')}</div><div class="val">${t.delivered_orders}</div><div class="sub">${rs(t.spend_delivered)} ${L('worth received', 'ka maal mila')}</div></div>
+        <div class="stat"><div class="lbl">📈 ${L('Expected margin (estimate)', 'Andaaz margin')}</div><div class="val" style="color:var(--green)">${rs(t.expected_margin)}</div><div class="sub">${L('On', 'Sirf')} ${t.margin_known_orders} ${L('orders where sell price is set', 'orders par jahan sell price set hai')}</div></div>
+      </div>
+      <div class="card">
+        <h3>${L('Order-wise margin', 'Order ke hisaab se margin')}</h3>
+        <div class="mk-prefill">ℹ️ ${L('This margin is an estimate at TODAY\'S sell rate — the real profit is final when the goods actually sell.', 'Ye margin AAJ ke sell rate par ek andaaz hai — asal munafa maal bikne par pakka hota hai.')}</div>
+        ${r.orders.length ? `<div class="mk-scroll"><table><thead><tr><th>${L('Order', 'Order')}</th><th>${L('Item', 'Saaman')}</th><th>${L('Seller', 'Seller')}</th><th>${L('Qty', 'Matra')}</th><th>${L('Mart rate', 'Mart bhaav')}</th><th>${L('Your sell rate', 'Aapka sell bhaav')}</th><th>${L('Margin / unit', 'Margin / unit')}</th><th>${L('Expected margin', 'Andaaz margin')}</th><th>${L('Order total', 'Order kul')}</th></tr></thead><tbody>
+          ${r.orders.map((o) => `<tr><td><b>${o.order_no}</b><div class="mk-hint">${niceDate(String(o.delivered_at).slice(0, 10))}</div></td><td>${esc(o.product)}</td><td>${esc(o.seller_name)}</td><td>${fmtQty(o.qty)} ${esc(o.unit)}</td><td>${rs(o.buy_rate)}</td>
+            <td>${o.sell_price == null ? '—' : rs(o.sell_price)}</td>
+            <td>${o.margin_per_unit == null ? '—' : `<span style="color:${o.margin_per_unit >= 0 ? 'var(--green)' : 'var(--red)'}">${rs(o.margin_per_unit)}</span>`}</td>
+            <td>${o.expected_margin == null ? '—' : `<b style="color:${o.expected_margin >= 0 ? 'var(--green)' : 'var(--red)'}">${rs(o.expected_margin)}</b>`}</td>
+            <td>${rs(o.total)}</td></tr>`).join('')}
+        </tbody></table></div>` : empty('📊', L('No delivered Mart orders yet. When you receive goods from a Mart order, its margin shows here.', 'Abhi koi delivered Mart order nahi. Mart order ka maal milte hi uska margin yahan dikhega.'))}
+      </div>`;
   };
 
   // ---------- chat / counter (both sides) ----------
@@ -420,21 +575,43 @@
     try { await api('PUT', `/api/mart/quotes/${d.id}`, { price: v }); toast(L('Quote updated — buyer notified', 'Quote बदला — buyer को सूचना गई')); refreshChat(d.id); if (M.view === 'sent') go('sent'); } catch (e) { toast(errText(e)); }
   };
 
-  // ---------- seller profile modal ----------
-  ACT.seller = async (d) => {
-    try {
-      const r = await api('GET', '/api/mart/sellers/' + d.id);
-      const s = r.seller;
-      M._listings = (M._listings || []).concat(r.listings.map((l) => ({ ...l, seller: s, business_id: s.business_id })));
-      openModal(`<div class="mk-row"><div><h2>${esc(s.name)} ${gstBadge(s)}</h2><div class="mk-hint">${esc(s.area ? s.area + ', ' : '')}${esc(s.city)} · ${s.all_india ? L('delivers all India', 'पूरे भारत में delivery') : L('delivers to', 'डिलीवरी') + ' ' + esc([s.city].concat(s.service_cities).join(', '))}</div></div><button class="btn btn-ghost btn-sm" data-act="close">✕</button></div>
-        <div class="stats" style="grid-template-columns:repeat(3,1fr);margin:14px 0"><div class="stat"><div class="lbl">${L('Rating', 'Rating')}</div><div class="val" style="font-size:20px">${s.rating ? '★ ' + s.rating : '—'}</div><div class="sub">${s.ratings_count} ${L('ratings', 'ratings')}</div></div><div class="stat"><div class="lbl">${L('Deals done', 'सौदे')}</div><div class="val" style="font-size:20px">${s.deals}</div></div><div class="stat"><div class="lbl">${L('On BizYour since', 'BizYour पर')}</div><div class="val" style="font-size:20px">${esc(s.since || '—')}</div></div></div>
-        ${s.about ? `<div style="font-size:13.5px;margin-bottom:10px">${esc(s.about)}</div>` : ''}
-        <div class="mk-chips" style="margin-bottom:12px">${s.categories.map((c) => `<span class="mk-chip">${ic(c)} ${esc(c)}</span>`).join('')}</div>
-        <h3>${L('Products', 'सामान')}</h3>
-        ${r.listings.length ? `<table><tbody>${r.listings.map((l) => `<tr><td>${ic(l.category)} ${esc(l.name)}</td><td>${rs(l.price)}/${esc(l.unit)}</td><td class="mk-hint">${L('min', 'कम से कम')} ${fmtQty(l.moq)}</td><td style="text-align:right">${s.business_id === me.business.id ? '' : `<button class="btn btn-soft btn-sm" data-act="quoteListing" data-id="${l.id}">${L('Get quote', 'Quote मांगो')}</button>`}</td></tr>`).join('')}</tbody></table>` : `<div class="mk-hint">${L('No listings yet.', 'अभी कोई listing नहीं।')}</div>`}
-        ${r.reviews.length ? `<h3 style="margin-top:14px">${L('Recent reviews', 'हाल के reviews')}</h3>${r.reviews.map((rv) => `<div class="mk-mini">${'★'.repeat(rv.rating)} <span style="flex:1">${esc(rv.review || '')}</span><span class="mk-hint">${esc(rv.product)}</span></div>`).join('')}` : ''}
-        <div class="mk-hint" style="margin-top:12px">${L('Phone numbers are shared once you place an order with each other.', 'Phone number ऑर्डर होने के बाद दिखता है।')}</div>`);
-    } catch (e) { toast(errText(e)); }
+  // ---------- seller rate-list page ----------
+  ACT.seller = (d) => { go('seller', Number(d.id)); };
+  V.seller = async (id) => {
+    const r = await api('GET', '/api/mart/sellers/' + id);
+    const s = r.seller;
+    M._seller = s;
+    M._listings = r.listings.map((l) => ({ ...l, seller: s, business_id: s.business_id }));
+    const mine = s.business_id === me.business.id;
+    $('martView').innerHTML = `
+      <button class="btn btn-ghost btn-sm" data-act="nav" data-v="browse">← ${L('Browse', 'देखो')}</button>
+      <div class="card" style="margin-top:12px">
+        <div class="mk-row" style="align-items:flex-start;flex-wrap:wrap">
+          <div><h3 style="font-size:20px">${esc(s.name)} ${gstBadge(s)}${verifiedBadge(s)}</h3>
+            <div class="mk-hint">${esc(s.area ? s.area + ', ' : '')}${esc(s.city)} · ${s.all_india ? L('delivers all India', 'पूरे भारत में delivery') : L('delivers to', 'डिलीवरी') + ' ' + esc([s.city].concat(s.service_cities).join(', '))}</div>
+            ${s.about ? `<div style="font-size:13.5px;margin-top:6px">${esc(s.about)}</div>` : ''}</div>
+          <div style="display:flex;gap:6px;align-items:center">${mine ? '' : `${favBtn(s)}<button class="btn btn-blue btn-sm" data-act="sellerInq" data-id="${s.business_id}">${L('Send inquiry', 'Inquiry bhejo')}</button>`}</div>
+        </div>
+        <div class="stats" style="grid-template-columns:repeat(4,1fr);margin:14px 0 4px">
+          <div class="stat"><div class="lbl">${L('Rating', 'Rating')}</div><div class="val" style="font-size:20px">${s.rating ? '★ ' + s.rating : '—'}</div><div class="sub">${s.ratings_count} ${L('ratings', 'ratings')}</div></div>
+          <div class="stat"><div class="lbl">${L('Deals done', 'सौदे')}</div><div class="val" style="font-size:20px">${s.deals}</div><div class="sub">${L('delivered orders', 'delivered orders')}</div></div>
+          <div class="stat"><div class="lbl">${L('Repeat buyers', 'Repeat buyers')}</div><div class="val" style="font-size:20px">${s.repeat_buyers}</div><div class="sub">${L('bought 2+ times', '2+ बार खरीदा')}</div></div>
+          <div class="stat"><div class="lbl">${L('On BizYour since', 'BizYour पर')}</div><div class="val" style="font-size:20px">${esc(s.since || '—')}</div></div>
+        </div>
+        <div class="mk-chips">${s.categories.map((c) => `<span class="mk-chip">${ic(c)} ${esc(c)}</span>`).join('')}</div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h3>${L('Rate list', 'Rate list')} — ${L('all products', 'सारा सामान')}</h3>
+        ${r.listings.length ? `<div class="mk-scroll"><table><thead><tr><th></th><th>${L('Product', 'सामान')}</th><th>${L('Unit', 'Unit')}</th><th>${L('Wholesale rate', 'Wholesale भाव')}</th><th>${L('Min. order', 'कम से कम')}</th><th></th></tr></thead><tbody>
+          ${r.listings.map((l) => `<tr><td>${l.photo ? `<img class="mk-thumb" src="${l.photo}" alt="">` : `<div class="mk-thumb" style="display:flex;align-items:center;justify-content:center;font-size:20px">${ic(l.category)}</div>`}</td><td><b>${esc(l.name)}</b><div class="mk-hint">${esc(l.category)}</div></td><td>${esc(l.unit)}</td><td><b>${rs(l.price)}</b>/${esc(l.unit)}</td><td>${fmtQty(l.moq)} ${esc(l.unit)}</td><td style="text-align:right">${mine ? '' : `<button class="btn btn-soft btn-sm" data-act="quoteListing" data-id="${l.id}">${L('Get quote', 'Quote मांगो')}</button>`}</td></tr>`).join('')}
+        </tbody></table></div>` : `<div class="mk-hint">${L('No listings yet.', 'अभी कोई listing नहीं।')}</div>`}
+      </div>
+      ${r.reviews.length ? `<div class="card" style="margin-top:14px"><h3>${L('Buyer reviews', 'Buyers के reviews')}</h3>${r.reviews.map((rv) => `<div class="mk-mini"><span style="color:var(--amber)">${'★'.repeat(rv.rating)}</span> <span style="flex:1">${esc(rv.review || '')}</span><span class="mk-hint">${esc(rv.product)} · ${ago(rv.updated_at)}</span></div>`).join('')}</div>` : ''}
+      <div class="mk-hint" style="margin-top:10px">${L('Phone numbers are shared once you place an order with each other.', 'Phone number ऑर्डर होने के बाद दिखता है।')}</div>`;
+  };
+  ACT.sellerInq = (d) => {
+    M.mode = 'buy';
+    go('post', { target_business_id: Number(d.id), target_name: M._seller ? M._seller.name : '' });
   };
 
   // ---------- BUY: browse ----------
@@ -447,8 +624,8 @@
       const r = await api('GET', `/api/mart/listings?category=${encodeURIComponent(c)}&q=${encodeURIComponent(q)}`);
       M._listings = r.listings;
       body = r.listings.length ? `<div class="mk-grid4">${r.listings.map((l) => `
-        <div class="card mk-prod"><div class="mk-pic">${ic(l.category)}</div><b>${esc(l.name)}</b>
-          <div class="mk-hint"><a data-act="seller" data-id="${l.business_id}">${esc(l.seller.name)}</a> ${gstBadge(l.seller)} · ${esc(l.seller.city)}</div>
+        <div class="card mk-prod"><div class="mk-pic">${l.photo ? `<img src="${l.photo}" alt="">` : ic(l.category)}</div><b>${esc(l.name)}</b>
+          <div class="mk-hint"><a data-act="seller" data-id="${l.business_id}">${esc(l.seller.name)}</a> ${gstBadge(l.seller)}${verifiedBadge(l.seller)} · ${esc(l.seller.city)}</div>
           <div class="mk-price" style="margin:2px 0">${rs(l.price)}<small>/${esc(l.unit)}</small></div>
           <div class="mk-hint">${L('Min. order', 'कम से कम')} ${fmtQty(l.moq)} ${esc(l.unit)} · ${ratingTxt(l.seller)}</div>
           ${l.mine ? `<span class="tag mk-tag-grey" style="align-self:flex-start">${L('Your listing', 'आपकी listing')}</span>` : `<button class="btn btn-blue btn-sm" data-act="quoteListing" data-id="${l.id}">${L('Get quote', 'Quote मांगो')}</button>`}
@@ -457,7 +634,7 @@
     } else {
       const r = await api('GET', `/api/mart/sellers?category=${encodeURIComponent(c)}&q=${encodeURIComponent(q)}`);
       body = r.sellers.length ? `<div class="mk-grid3">${r.sellers.map((s) => `
-        <div class="card"><div class="mk-row"><a class="mk-sname" data-act="seller" data-id="${s.business_id}">${esc(s.name)}</a>${gstBadge(s)}</div>
+        <div class="card"><div class="mk-row"><a class="mk-sname" data-act="seller" data-id="${s.business_id}">${esc(s.name)}</a><span>${gstBadge(s)}${verifiedBadge(s)}${s.mine ? '' : favBtn(s)}</span></div>
           <div class="mk-hint">${esc(s.area ? s.area + ', ' : '')}${esc(s.city)}${s.since ? ' · ' + L('since', 'से') + ' ' + esc(s.since) : ''}</div>
           <div class="mk-hint" style="margin:6px 0">${ratingTxt(s)} · ${dealsTxt(s)} · ${s.all_india ? L('All India', 'पूरा भारत') : esc([s.city].concat(s.service_cities).slice(0, 3).join(', '))}</div>
           <div class="mk-chips">${s.categories.map((x) => `<span class="mk-chip">${ic(x)} ${esc(x)}</span>`).join('')}</div>
@@ -493,7 +670,7 @@
         acts += `<button class="btn btn-ghost btn-sm" data-act="reorder" data-id="${o.id}">↻ ${L('Reorder', 'फिर मंगाओ')}</button>`;
       } else {
         if (o.status === 'placed') acts += `<button class="btn btn-sm btn-blue" data-act="ostatus" data-id="${o.id}" data-s="confirmed">✓ ${L('Confirm order', 'ऑर्डर पक्का करो')}</button>`;
-        if (o.status === 'confirmed') acts += `<button class="btn btn-sm btn-blue" data-act="ostatus" data-id="${o.id}" data-s="dispatched">🚚 ${L('Mark dispatched', 'माल भेज दिया')}</button>`;
+        if (o.status === 'confirmed') acts += `<button class="btn btn-sm btn-blue" data-act="dispatch" data-id="${o.id}">🚚 ${L('Mark dispatched', 'माल भेज दिया')}</button>`;
         if (['placed', 'confirmed'].includes(o.status)) acts += `<button class="btn btn-ghost btn-sm" data-act="ostatus" data-id="${o.id}" data-s="cancelled">${L('Cancel', 'रद्द')}</button>`;
         if (o.rating) acts += `<span class="mk-hint">${L('Buyer rated you', 'Buyer की rating')} ${'★'.repeat(o.rating)}${o.review ? ' — “' + esc(o.review) + '”' : ''}</span>`;
       }
@@ -502,10 +679,11 @@
         <div class="mk-row" style="align-items:flex-start;flex-wrap:wrap">
           <div><b>${o.order_no}</b> <span class="mk-hint">· ${ago(o.created_at)}</span>
             <h3 style="margin-top:3px">${esc(o.product)} — ${fmtQty(o.qty)} ${esc(o.unit)}</h3>
-            <div class="mk-hint">${role === 'buyer' ? L('Seller', 'Seller') : L('Buyer', 'Buyer')}: <b style="color:var(--ink)">${esc(p.name)}</b>${p.city ? ' · ' + esc(p.city) : ''}${p.phone ? ' · 📞 ' + esc(p.phone) : ''} · ${rs(o.price)}/${esc(o.unit)} · ${esc(o.payment_terms)}</div></div>
+            <div class="mk-hint">${role === 'buyer' ? L('Seller', 'Seller') : L('Buyer', 'Buyer')}: <b style="color:var(--ink)">${esc(p.name)}</b>${verifiedBadge(p)}${p.city ? ' · ' + esc(p.city) : ''}${p.phone ? ' · 📞 ' + esc(p.phone) : ''} · ${rs(o.price)}/${esc(o.unit)} · ${esc(o.payment_terms)}${termsTxt(o) ? ' · ' + termsTxt(o) : ''}</div></div>
           <div style="text-align:right"><div class="mk-big">${rs(o.total)}</div>${o.purchase_id && role === 'buyer' ? `<span class="tag tag-paid">✓ ${L('In Workspace → Purchases', 'Workspace → खरीद में')}</span>` : ''}${cancelled ? `<span class="tag tag-pend">${L('Cancelled', 'रद्द')}</span>` : ''}</div>
         </div>
         ${cancelled ? '' : `<div class="mk-steps">${STEP_LBL.map((s, k) => `<div class="mk-step ${k <= o.step ? 'done' : ''}"><div class="c">${k <= o.step ? '✓' : ''}</div>${L(s[0], s[1])}</div>`).join('')}</div>`}
+        ${!cancelled && (o.expected_delivery_date || o.transporter_name) ? `<div class="mk-hint" style="margin-top:6px">🚚 ${L('Expected by', 'Pahunchne ki ummeed')} <b style="color:var(--ink)">${o.expected_delivery_date ? niceDate(o.expected_delivery_date) : '—'}</b>${o.transporter_name ? ' · ' + L('via', 'se') + ' ' + esc(o.transporter_name) : ''}</div>` : ''}
         <div class="mk-actions">${acts}</div>
       </div>`;
     }).join('') : `<div class="card">${empty('🚚', role === 'buyer' ? L('No orders yet. Accept a quote to place one.', 'अभी कोई ऑर्डर नहीं। Quote accept करो।') : L('No orders yet. Send quotes on leads to win orders.', 'अभी कोई ऑर्डर नहीं। Leads पर quote भेजो।'))}</div>`;
@@ -519,12 +697,51 @@
   ACT.owa = async (d) => {
     try { const r = await api('GET', `/api/mart/orders/${d.id}/whatsapp-link`); window.open(r.url, '_blank', 'noopener'); } catch (e) { toast(errText(e)); }
   };
-  ACT.reorder = (d) => {
-    const o = M._orders.find((x) => String(x.id) === d.id);
-    M.mode = 'buy';
-    go('post', { product: o.product, qty: o.qty, unit: o.unit, target_price: o.price, source: 'reorder', target_business_id: o.other_party.business_id, target_name: o.other_party.name });
+  ACT.reorder = async (d, el) => {
+    el.disabled = true;
+    try {
+      const r = await api('POST', `/api/mart/orders/${d.id}/repeat`);
+      toast(`↻ ${L('Fresh inquiry sent to the same seller — they will quote again', 'Usi seller ko nayi inquiry gayi — wo phir quote dega')}`);
+      M.mode = 'buy'; go('inquiry', r.inquiry.id);
+    } catch (e) { el.disabled = false; toast(errText(e)); }
   };
-  ACT.rate = async (d) => { try { await api('POST', `/api/mart/orders/${d.id}/rate`, { rating: Number(d.r) }); toast(L('Thanks! Ratings help other businesses choose.', 'धन्यवाद! Rating से दूसरे businesses को मदद मिलती है।')); V.orders(); } catch (e) { toast(errText(e)); } };
+  ACT.dispatch = (d) => {
+    const o = M._orders.find((x) => String(x.id) === d.id);
+    openModal(`<h2>🚚 ${L('Mark dispatched', 'माल भेज दिया')} — ${o.order_no}</h2>
+      <div class="hint">${esc(o.product)} · ${fmtQty(o.qty)} ${esc(o.unit)} → ${esc(o.other_party.name)}. ${L('The buyer sees these details on the order timeline.', 'Buyer ko ye details order timeline par dikhengi.')}</div>
+      <div class="row2" style="margin-top:10px">
+        <div class="field"><label>${L('Expected delivery date', 'Pahunchne ki expected date')}</label><input class="input" id="mkExpDate" type="date" min="${dayPlus(0)}" value="${dayPlus(o.delivery_days || 2)}"></div>
+        <div class="field"><label>${L('Transporter / vehicle (optional)', 'Transporter / gaadi (optional)')}</label><input class="input" id="mkTransporter" maxlength="80" placeholder="${L('e.g. Sharma Transport', 'jaise Sharma Transport')}"></div>
+      </div>
+      <div class="mk-mfoot"><button class="btn btn-ghost" data-act="close">${L('Cancel', 'रद्द')}</button><button class="btn btn-blue" data-act="dispatchYes" data-id="${o.id}">🚚 ${L('Dispatched', 'Bhej diya')}</button></div>`);
+  };
+  ACT.dispatchYes = async (d, el) => {
+    el.disabled = true;
+    try {
+      await api('POST', `/api/mart/orders/${d.id}/status`, { status: 'dispatched', expected_delivery_date: $('mkExpDate').value || null, transporter_name: $('mkTransporter').value.trim() });
+      closeModal(); toast(L('Marked dispatched — buyer notified', 'Bhej diya — buyer ko soochna')); V.orders(); refreshSummary();
+    } catch (e) { el.disabled = false; toast(errText(e)); }
+  };
+  ACT.rate = (d) => {
+    const o = M._orders.find((x) => String(x.id) === d.id);
+    let chosen = Number(d.r) || 5;
+    openModal(`<h2>${L('Rate', 'Rating do')} ${esc(o.other_party.name)}</h2>
+      <div class="hint">${o.order_no} · ${esc(o.product)} — ${L('only buyers with a delivered order can rate, once.', 'sirf delivered order wale buyer ek baar rating de sakte hain.')}</div>
+      <div style="font-size:30px;margin:12px 0">${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="mk-rate-star" data-r="${n}" style="background:none;border:none;cursor:pointer;font-size:30px;padding:0 2px;color:${n <= chosen ? 'var(--amber)' : '#C3CAD6'}">★</button>`).join('')}</div>
+      <div class="field"><label>${L('Say a line (optional)', 'Ek line likho (optional)')}</label><input class="input" id="mkReview" maxlength="300" placeholder="${L('e.g. Good quality, on time', 'jaise Maal badhiya, time par')}"></div>
+      <div class="mk-mfoot"><button class="btn btn-ghost" data-act="close">${L('Cancel', 'रद्द')}</button><button class="btn btn-blue" id="mkRateGo">${L('Give rating', 'Rating do')}</button></div>`);
+    $('mkModal').querySelectorAll('.mk-rate-star').forEach((b) => b.addEventListener('click', () => {
+      chosen = Number(b.dataset.r);
+      $('mkModal').querySelectorAll('.mk-rate-star').forEach((x) => { x.style.color = Number(x.dataset.r) <= chosen ? 'var(--amber)' : '#C3CAD6'; });
+    }));
+    $('mkRateGo').addEventListener('click', async (ev) => {
+      ev.target.disabled = true;
+      try {
+        await api('POST', `/api/mart/orders/${d.id}/rate`, { rating: chosen, review: $('mkReview').value.trim() });
+        closeModal(); toast(L('Thanks! Ratings help other businesses choose.', 'धन्यवाद! Rating से दूसरे businesses को मदद मिलती है।')); V.orders();
+      } catch (e) { ev.target.disabled = false; toast(errText(e)); }
+    });
+  };
   ACT.receive = (d) => {
     const o = M._orders.find((x) => String(x.id) === d.id);
     const def = o.payment_terms === 'Full advance' ? o.total : o.payment_terms === '50% advance' ? Math.round(o.total / 2 * 100) / 100 : 0;
@@ -565,7 +782,7 @@
       <div class="toolbar" style="flex-wrap:wrap"><div style="flex:1"><h3>${L('Businesses looking to buy', 'खरीदने वाले businesses')}</h3><div class="hint" style="margin:0">${L('You get leads for', 'आपको leads मिलती हैं:')} ${M.profile.categories.map((c) => ic(c) + ' ' + esc(c)).join(', ')} · ${M.profile.all_india ? L('All India', 'पूरा भारत') : esc([M.profile.city].concat(M.profile.service_cities).filter(Boolean).join(', '))} — <a data-act="nav" data-v="profile">${L('edit', 'बदलो')}</a></div></div></div>
       <div class="mk-tabs"><button class="${M.leadScope === 'matched' ? 'on' : ''}" data-act="lscope" data-s="matched">${L('Matched to you', 'आपके लिए')}${matchedCount != null ? ' (' + matchedCount + ')' : ''}</button><button class="${M.leadScope === 'all' ? 'on' : ''}" data-act="lscope" data-s="all">${L('All open requests', 'सारी खुली requests')}</button></div>
       ${r.leads.length ? `<div class="mk-scroll"><table><thead><tr><th>${L('Buyer', 'Buyer')}</th><th>${L('Needs', 'चाहिए')}</th><th>${L('Qty', 'मात्रा')}</th><th>${L('Target', 'Target')}</th><th>${L('By', 'तक')}</th><th>${L('Quotes', 'Quotes')}</th><th></th></tr></thead><tbody>
-      ${r.leads.map((l) => `<tr><td><b>${esc(l.buyer.name)}</b> ${l.buyer.gst_registered ? '<span class="mk-gst">✔ GST</span>' : ''}<div class="mk-hint">${esc(l.city)} · ${ago(l.created_at)} · ${esc(l.frequency)}</div></td>
+      ${r.leads.map((l) => `<tr><td><b>${esc(l.buyer.name)}</b> ${l.buyer.gst_registered ? '<span class="mk-gst">✔ GST</span>' : ''}${l.buyer.verified ? '<span class="mk-verified">✓ Verified</span>' : ''}<div class="mk-hint">${esc(l.city)} · ${ago(l.created_at)} · ${esc(l.frequency)}</div></td>
         <td>${ic(l.category)} ${esc(l.product)} ${l.direct ? `<span class="tag mk-tag-blue">${L('Asked you', 'आपसे मांगा')}</span>` : l.matched && M.leadScope === 'all' ? `<span class="tag mk-tag-blue">${L('Match', 'Match')}</span>` : ''}${l.verified_only ? ` <span class="tag mk-tag-grey">${L('GST only', 'सिर्फ़ GST')}</span>` : ''}</td>
         <td>${fmtQty(l.qty)} ${esc(l.unit)}</td><td>${l.target_price != null ? rs(l.target_price) : '—'}</td><td>${niceDate(l.need_by)}</td><td>${l.quotes_count}</td>
         <td style="text-align:right">${l.my_quote ? `<span class="tag ${l.my_quote.status === 'sent' ? 'tag-paid' : 'mk-tag-grey'}">${L('Quoted', 'Quote भेजा')} ${rs(l.my_quote.price)}</span>` : l.can_quote ? `<button class="btn btn-blue btn-sm" data-act="lead" data-id="${l.id}">${L('Send quote', 'Quote भेजो')}</button>` : `<span class="mk-hint">${L('GST sellers only', 'सिर्फ़ GST sellers')}</span>`}</td></tr>`).join('')}
@@ -585,7 +802,7 @@
     const i = r.inquiry, q = r.my_quote;
     const lst = mine.find((l) => l.name.toLowerCase() === i.product.toLowerCase());
     const price = q ? q.price : (lst ? lst.price : (i.target_price || ''));
-    openModal(`<div class="mk-row"><div><h2>${L('Quote for', 'Quote:')} ${esc(r.buyer.name)}</h2><div class="mk-hint">${ic(i.category)} ${esc(i.product)} · ${fmtQty(i.qty)} ${esc(i.unit)} · ${esc(i.city)} · ${L('by', 'तक')} ${niceDate(i.need_by)}${i.target_price != null ? ' · ' + L('target', 'target') + ' ' + rs(i.target_price) : ''} · ${r.quotes_count} ${L('quotes so far', 'quotes अब तक')}</div></div><button class="btn btn-ghost btn-sm" data-act="close">✕</button></div>
+    openModal(`<div class="mk-row"><div><h2>${L('Quote for', 'Quote:')} ${esc(r.buyer.name)}${r.buyer.verified ? ' <span class="mk-verified">✓ Verified</span>' : ''}</h2><div class="mk-hint">${ic(i.category)} ${esc(i.product)} · ${fmtQty(i.qty)} ${esc(i.unit)} · ${esc(i.city)} · ${L('by', 'तक')} ${niceDate(i.need_by)}${i.target_price != null ? ' · ' + L('target', 'target') + ' ' + rs(i.target_price) : ''} · ${r.quotes_count} ${L('quotes so far', 'quotes अब तक')}</div></div><button class="btn btn-ghost btn-sm" data-act="close">✕</button></div>
       ${i.notes ? `<div class="mk-box">“${esc(i.notes)}”</div>` : ''}
       ${!r.can_quote ? `<div class="err" style="display:block;margin-top:12px">${esc(errText(new Error(r.cannot_quote_reason === 'closed' ? 'inquiry_not_open' : r.cannot_quote_reason)))}</div>` : `
       <div class="err" id="mkQErr"></div>
@@ -594,6 +811,8 @@
         <div class="field"><label>${L('Delivery in (days) *', 'Delivery (दिन) *')}</label><input class="input" name="delivery_days" type="number" min="0" max="90" required value="${q ? q.delivery_days : 2}"></div>
         <div class="field"><label>${L('Minimum order', 'Minimum order')} (${esc(i.unit)})</label><input class="input" name="moq" type="number" min="0" step="any" value="${q ? q.moq : (lst ? Math.min(lst.moq, i.qty) : 0)}"></div>
         <div class="field"><label>${L('Payment terms', 'Payment शर्तें')}</label><select class="input" name="payment_terms">${meta.payment_terms.map((t) => `<option ${q && q.payment_terms === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+        <div class="field"><label>${L('Advance % (optional)', 'Advance % (optional)')}</label><input class="input" name="advance_percent" type="number" min="0" max="100" step="any" value="${q && q.advance_percent != null ? q.advance_percent : ''}" placeholder="20"></div>
+        <div class="field"><label>${L('Credit days (optional)', 'Credit din (optional)')}</label><input class="input" name="credit_days" type="number" min="0" max="120" value="${q && q.credit_days != null ? q.credit_days : ''}" placeholder="15"></div>
         <div class="field"><label>${L('Quote valid for', 'Quote कब तक valid')}</label><select class="input" name="valid_days">${[2, 3, 5, 7, 15].map((n) => `<option value="${n}" ${(q ? q.valid_days : 3) === n ? 'selected' : ''}>${n} ${L('days', 'दिन')}</option>`).join('')}</select></div>
         <div class="field"><label>${L('Total for buyer', 'Buyer का कुल')}</label><div class="mk-big" id="mkQTotal">—</div></div>
       </div>
@@ -604,7 +823,8 @@
     f.price.addEventListener('input', upd); upd();
     f.addEventListener('submit', async (e) => {
       e.preventDefault(); hideErr('mkQErr');
-      const body = { price: Number(f.price.value), delivery_days: Number(f.delivery_days.value), moq: Number(f.moq.value || 0), payment_terms: f.payment_terms.value, valid_days: Number(f.valid_days.value), note: f.note.value.trim() };
+      const body = { price: Number(f.price.value), delivery_days: Number(f.delivery_days.value), moq: Number(f.moq.value || 0), payment_terms: f.payment_terms.value, valid_days: Number(f.valid_days.value), note: f.note.value.trim(),
+        advance_percent: f.advance_percent.value === '' ? null : Number(f.advance_percent.value), credit_days: f.credit_days.value === '' ? null : Number(f.credit_days.value) };
       try {
         await api('POST', `/api/mart/inquiries/${inqId}/quotes`, body);
         closeModal(); toast(`📤 ${L('Quote sent to', 'Quote भेजा:')} ${r.buyer.name}`);
@@ -622,7 +842,7 @@
     const tg = { sent: ['Waiting', 'इंतज़ार', 'tag-part'], accepted: ['Won 🎉', 'जीता 🎉', 'tag-paid'], declined: ['Not selected', 'नहीं चुना', 'tag-pend'], closed: ['Closed', 'बंद', 'mk-tag-grey'], withdrawn: ['Withdrawn', 'वापस लिया', 'mk-tag-grey'], expired: ['Expired', 'समय ख़त्म', 'mk-tag-grey'], cancelled: ['Order cancelled', 'ऑर्डर रद्द', 'tag-pend'] };
     $('martView').innerHTML = `<div class="card">${r.quotes.length ? `<div class="mk-scroll"><table><thead><tr><th>${L('Buyer', 'Buyer')}</th><th>${L('Product', 'सामान')}</th><th>${L('Your price', 'आपका भाव')}</th><th>${L('Total', 'कुल')}</th><th>${L('Terms', 'शर्तें')}</th><th>${L('Status', 'हालत')}</th><th></th></tr></thead><tbody>
       ${r.quotes.map((q) => { const t = tg[q.status] || tg.sent; return `<tr><td><b>${esc(q.buyer.name)}</b><div class="mk-hint">${ago(q.updated_at)}</div></td><td>${ic(q.inquiry.category)} ${esc(q.inquiry.product)} · ${fmtQty(q.inquiry.qty)} ${esc(q.inquiry.unit)}</td>
-        <td>${rs(q.price)}/${esc(q.inquiry.unit)}</td><td>${rs(q.price * q.inquiry.qty)}</td><td class="mk-hint">${esc(q.payment_terms)} · ${q.delivery_days}d</td>
+        <td>${rs(q.price)}/${esc(q.inquiry.unit)}</td><td>${rs(q.price * q.inquiry.qty)}</td><td class="mk-hint">${esc(q.payment_terms)}${termsTxt(q) ? ' · ' + termsTxt(q) : ''} · ${q.delivery_days}d</td>
         <td><span class="tag ${t[2]}">${L(t[0], t[1])}</span>${q.order ? `<div class="mk-hint">${q.order.order_no}</div>` : ''}</td>
         <td style="text-align:right;white-space:nowrap"><button class="btn btn-ghost btn-sm" data-act="chat" data-id="${q.id}">💬</button>${q.status === 'sent' ? `<button class="btn btn-ghost btn-sm" data-act="lead" data-id="${q.inquiry_id}">${L('Edit', 'बदलो')}</button><button class="btn btn-ghost btn-sm" data-act="withdraw" data-id="${q.id}">${L('Withdraw', 'वापस लो')}</button>` : ''}${q.order ? `<button class="btn btn-soft btn-sm" data-act="gotoOrder" data-id="${q.order.id}">${L('Order →', 'ऑर्डर →')}</button>` : ''}</td></tr>`; }).join('')}
       </tbody></table></div>` : empty('📤', L('No quotes sent yet.', 'अभी कोई quote नहीं भेजा।') + ` <a data-act="nav" data-v="leads">${L('See leads', 'Leads देखो')}</a>`)}</div>`;
@@ -637,8 +857,8 @@
     const r = await api('GET', '/api/mart/my-listings');
     $('martView').innerHTML = `<div class="card">
       <div class="toolbar"><div style="flex:1"><h3>${L('What you sell on the Mart', 'Mart पर आप क्या बेचते हो')}</h3><div class="hint" style="margin:0">${L('Listed products show in Browse. Buyers can ask you for a quote directly.', 'Listing Browse में दिखती है। Buyers सीधे आपसे quote मांग सकते हैं।')}</div></div><button class="btn btn-blue" data-act="addListing">+ ${L('Add product', 'सामान जोड़ो')}</button></div>
-      ${r.listings.length ? `<table><thead><tr><th>${L('Product', 'सामान')}</th><th>${L('Category', 'Category')}</th><th>${L('Wholesale price', 'Wholesale भाव')}</th><th>${L('Min. order', 'कम से कम')}</th><th>${L('Visible', 'दिखेगा')}</th><th></th></tr></thead><tbody>
-      ${r.listings.map((l) => `<tr><td>${ic(l.category)} <b>${esc(l.name)}</b>${l.product_id ? ` <span class="mk-hint">· ${L('linked to stock', 'stock से जुड़ा')}</span>` : ''}</td><td>${esc(l.category)}</td><td>${rs(l.price)}/${esc(l.unit)}</td><td>${fmtQty(l.moq)} ${esc(l.unit)}</td>
+      ${r.listings.length ? `<table><thead><tr><th></th><th>${L('Product', 'सामान')}</th><th>${L('Category', 'Category')}</th><th>${L('Wholesale price', 'Wholesale भाव')}</th><th>${L('Min. order', 'कम से कम')}</th><th>${L('Visible', 'दिखेगा')}</th><th></th></tr></thead><tbody>
+      ${r.listings.map((l) => `<tr><td>${l.photo ? `<img class="mk-thumb" src="${l.photo}" alt="">` : ''}</td><td>${ic(l.category)} <b>${esc(l.name)}</b>${l.product_id ? ` <span class="mk-hint">· ${L('linked to stock', 'stock से जुड़ा')}</span>` : ''}</td><td>${esc(l.category)}</td><td>${rs(l.price)}/${esc(l.unit)}</td><td>${fmtQty(l.moq)} ${esc(l.unit)}</td>
         <td><label class="switch" style="margin:0"><input type="checkbox" data-act="toggleListing" data-id="${l.id}" ${l.active ? 'checked' : ''}><span class="slider"></span></label></td>
         <td style="text-align:right"><button class="btn btn-ghost btn-sm" data-act="editListing" data-id="${l.id}">${L('Edit', 'बदलो')}</button><button class="btn btn-danger btn-sm" data-act="delListing" data-id="${l.id}">${L('Remove', 'हटाओ')}</button></td></tr>`).join('')}
       </tbody></table>` : empty('🏷️', L('No products listed yet.', 'अभी कोई सामान list नहीं किया।'))}
@@ -665,8 +885,32 @@
         <div class="field"><label>${L('Unit', 'Unit')}</label><select class="input" name="unit">${meta.units.map((u) => `<option ${l && l.unit === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
         <div class="field"><label>${L('Wholesale price ₹ *', 'Wholesale भाव ₹ *')}</label><input class="input" name="price" type="number" step="any" min="0.01" required value="${l ? l.price : ''}"></div>
         <div class="field"><label>${L('Minimum order *', 'कम से कम order *')}</label><input class="input" name="moq" type="number" step="any" min="0.01" required value="${l ? l.moq : 1}"></div>
-      </div><div class="mk-mfoot"><button type="button" class="btn btn-ghost" data-act="close">${L('Cancel', 'रद्द')}</button><button class="btn btn-blue">${L('Save', 'सेव करो')}</button></div></form>`);
+      </div>
+      <div class="field"><label>${L('Photo (optional)', 'Photo (optional)')}</label><input class="input" type="file" id="mkLPhoto" accept="image/*">
+        <div id="mkLPhotoWrap">${l && l.photo ? `<img class="mk-photo-prev" src="${l.photo}" alt="">` : ''}</div>
+        <div style="margin-top:6px">${l && l.photo ? `<button type="button" class="btn btn-ghost btn-sm" id="mkLPhotoDel">${L('Remove photo', 'Photo हटाओ')}</button>` : ''}<span class="mk-hint">${L('One photo per listing — it is shrunk automatically before saving.', 'Ek listing par ek photo — save hone se pehle apne aap chhoti ho jayegi.')}</span></div></div>
+      <div class="mk-mfoot"><button type="button" class="btn btn-ghost" data-act="close">${L('Cancel', 'रद्द')}</button><button class="btn btn-blue">${L('Save', 'सेव करो')}</button></div></form>`);
     const f = $('mkLForm');
+    const photoState = { value: l ? (l.photo || null) : null, touched: !l };
+    $('mkLPhoto').addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      if (!/^image\//.test(file.type)) { toast(L('Please choose an image file.', 'Image file chuno.')); e.target.value = ''; return; }
+      const img = new Image();
+      img.onload = () => {
+        const sc = Math.min(1, 900 / Math.max(img.width, img.height));
+        const cv = document.createElement('canvas');
+        cv.width = Math.max(1, Math.round(img.width * sc)); cv.height = Math.max(1, Math.round(img.height * sc));
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(img.src);
+        photoState.value = cv.toDataURL('image/jpeg', 0.82); photoState.touched = true;
+        $('mkLPhotoWrap').innerHTML = `<img class="mk-photo-prev" src="${photoState.value}" alt="">`;
+      };
+      img.onerror = () => { URL.revokeObjectURL(img.src); toast(L('That file could not be read as an image.', 'Ye file image ki tarah nahi khuli.')); };
+      img.src = URL.createObjectURL(file);
+    });
+    const delBtn = $('mkLPhotoDel');
+    if (delBtn) delBtn.addEventListener('click', () => { photoState.value = null; photoState.touched = true; $('mkLPhotoWrap').innerHTML = ''; delBtn.remove(); });
     f.name.addEventListener('change', () => {
       const p = prods.find((x) => x.name === f.name.value);
       if (p) { if (meta.units.includes(p.unit)) f.unit.value = p.unit; if (!f.price.value && p.sell_price) f.price.value = p.sell_price; f.dataset.pid = p.id; }
@@ -674,6 +918,7 @@
     f.addEventListener('submit', async (e) => {
       e.preventDefault(); hideErr('mkLErr');
       const body = { name: f.name.value.trim(), category: f.category.value, unit: f.unit.value, price: Number(f.price.value), moq: Number(f.moq.value), active: l ? l.active : true, product_id: f.dataset.pid ? Number(f.dataset.pid) : (l ? l.product_id : null) };
+      if (photoState.touched) body.photo = photoState.value;
       try { if (l) await api('PUT', `/api/mart/listings/${l.id}`, body); else await api('POST', '/api/mart/listings', body); closeModal(); toast(L('Saved — visible in Browse', 'सेव हुआ — Browse में दिखेगा')); V.catalog(); }
       catch (err) { showErr('mkLErr', errText(err)); }
     });
@@ -691,7 +936,8 @@
       <div class="row2"><div class="field"><label>${L('Business name on Mart *', 'Mart पर नाम *')}</label><input class="input" name="display_name" required maxlength="80" value="${esc(p.display_name)}"></div>
         <div class="field"><label>${L('City', 'शहर')}</label><input class="input" name="city" maxlength="60" value="${esc(p.city)}"></div></div>
       <div class="row2"><div class="field"><label>${L('Area / market', 'इलाका / मार्केट')}</label><input class="input" name="area" maxlength="80" value="${esc(p.area)}" placeholder="${L('e.g. Naya Bazar', 'जैसे Naya Bazar')}"></div>
-        <div class="field"><label>GST</label><div class="mk-hint" style="padding-top:10px">${p.gst_registered ? '✔ ' + L('GSTIN added — buyers see a GST badge', 'GSTIN डाला है — buyers को GST badge दिखेगा') : L('No GSTIN yet. Add it in Workspace → Settings to get the GST badge and quote on "GST sellers only" inquiries.', 'GSTIN नहीं है। Workspace → Settings में डालो — GST badge मिलेगा और "सिर्फ़ GST" inquiries पर quote कर सकोगे।')}</div></div></div>
+        <div class="field"><label>GST</label><div class="mk-hint" style="padding-top:10px">${p.gst_registered ? '✔ ' + L('GSTIN added — buyers see a GST badge', 'GSTIN डाला है — buyers को GST badge दिखेगा') : L('No GSTIN yet. Add it in Workspace → Settings to get the GST badge and quote on "GST sellers only" inquiries.', 'GSTIN नहीं है। Workspace → Settings में डालो — GST badge मिलेगा और "सिर्फ़ GST" inquiries पर quote कर सकोगे।')}</div>
+        <div class="mk-hint" style="padding-top:4px">${p.verified ? '<span class="mk-verified">✓ Verified</span> ' + L('Your Verified badge is live — it shows with your name everywhere on the Mart.', 'Aapka Verified badge live hai — Mart par har jagah naam ke saath dikhta hai.') : L('Verified badge needs three things: a valid-format GSTIN (in Settings), a phone number and a city.', 'Verified badge ke liye teen cheezein chahiye: sahi format ka GSTIN (Settings me), phone number aur city.')}</div></div></div>
       <label class="tgl-row"><div class="t-txt"><b>${L('I sell on Business Mart', 'मैं Business Mart पर बेचता हूँ')}</b><span>${L('Wholesalers, distributors, manufacturers — get leads from businesses that need your products', 'Wholesaler, distributor, manufacturer — जिन्हें आपका सामान चाहिए उनसे leads पाओ')}</span></div><span class="switch"><input type="checkbox" name="is_seller" ${p.is_seller ? 'checked' : ''}><span class="slider"></span></span></label>
       <div id="mkSellerBits" class="${p.is_seller ? '' : 'hidden'}">
         <div class="field"><label>${L('What do you sell? (you get leads for these)', 'क्या बेचते हो? (इन्हीं की leads मिलेंगी)')}</label><div class="mk-chips" id="mkCats">${meta.categories.map((c) => `<button type="button" class="mk-chip ${p.categories.includes(c) ? 'on' : ''}" data-c="${esc(c)}">${ic(c)} ${esc(c)}</button>`).join('')}</div></div>

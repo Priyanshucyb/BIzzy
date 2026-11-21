@@ -605,6 +605,7 @@ const SCHEMA_SQL = `
     source TEXT NOT NULL DEFAULT 'manual',
     product_id INTEGER,
     target_business_id INTEGER,
+    group_id TEXT,
     notified INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -625,6 +626,8 @@ const SCHEMA_SQL = `
     moq REAL NOT NULL DEFAULT 0,
     delivery_days INTEGER NOT NULL DEFAULT 1,
     payment_terms TEXT NOT NULL DEFAULT 'Cash on delivery',
+    advance_percent REAL,
+    credit_days INTEGER,
     valid_days INTEGER NOT NULL DEFAULT 3,
     note TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'sent',
@@ -654,7 +657,11 @@ const SCHEMA_SQL = `
     price REAL NOT NULL DEFAULT 0,
     total REAL NOT NULL DEFAULT 0,
     payment_terms TEXT NOT NULL DEFAULT '',
+    advance_percent REAL,
+    credit_days INTEGER,
     delivery_days INTEGER NOT NULL DEFAULT 1,
+    expected_delivery_date TEXT,
+    transporter_name TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'placed',
     purchase_id INTEGER,
     rating INTEGER,
@@ -672,9 +679,17 @@ const SCHEMA_SQL = `
     unit TEXT NOT NULL DEFAULT 'kg',
     price REAL NOT NULL DEFAULT 0,
     moq REAL NOT NULL DEFAULT 1,
+    photo TEXT,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS mart_favourites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_id INTEGER NOT NULL REFERENCES businesses(id),
+    seller_business_id INTEGER NOT NULL REFERENCES businesses(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS mart_notifications (
@@ -699,13 +714,16 @@ const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_mart_orders_seller ON mart_orders(seller_business_id, id);
   CREATE INDEX IF NOT EXISTS idx_mart_listings_biz ON mart_listings(business_id);
   CREATE INDEX IF NOT EXISTS idx_mart_notif_biz ON mart_notifications(business_id, id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_mart_fav_once ON mart_favourites(business_id, seller_business_id);
+  CREATE INDEX IF NOT EXISTS idx_mart_fav_biz ON mart_favourites(business_id, id);
 `;
 
 // Business Mart tables (cross-business — see the schema note above). Copied
 // by migrate-to-cloud.js after TABLES; never part of a one-shop backup.
 const MART_TABLES = [
   'mart_profiles', 'mart_inquiries', 'mart_views', 'mart_quotes',
-  'mart_messages', 'mart_orders', 'mart_listings', 'mart_notifications'
+  'mart_messages', 'mart_orders', 'mart_listings', 'mart_notifications',
+  'mart_favourites'
 ];
 
 // SQLite datetime('now') is UTC 'YYYY-MM-DD HH:MM:SS' text — the Postgres
@@ -915,6 +933,23 @@ async function init() {
         CREATE INDEX IF NOT EXISTS idx_movements_product ON stock_movements(product_id);
       `);
     }
+    // Business Mart v2 migration (same idempotent pattern): quote payment
+    // terms (advance % / credit days), order dispatch details (expected
+    // date / transporter), bulk-inquiry grouping and listing photos are
+    // nullable columns — older local DBs gain them as NULL; the new
+    // mart_favourites table comes from SCHEMA_SQL above. Data untouched.
+    const mqCols = sdb.prepare('PRAGMA table_info(mart_quotes)').all().map((c) => c.name);
+    if (!mqCols.includes('advance_percent')) sdb.exec("ALTER TABLE mart_quotes ADD COLUMN advance_percent REAL");
+    if (!mqCols.includes('credit_days')) sdb.exec("ALTER TABLE mart_quotes ADD COLUMN credit_days INTEGER");
+    const moCols = sdb.prepare('PRAGMA table_info(mart_orders)').all().map((c) => c.name);
+    if (!moCols.includes('advance_percent')) sdb.exec("ALTER TABLE mart_orders ADD COLUMN advance_percent REAL");
+    if (!moCols.includes('credit_days')) sdb.exec("ALTER TABLE mart_orders ADD COLUMN credit_days INTEGER");
+    if (!moCols.includes('expected_delivery_date')) sdb.exec("ALTER TABLE mart_orders ADD COLUMN expected_delivery_date TEXT");
+    if (!moCols.includes('transporter_name')) sdb.exec("ALTER TABLE mart_orders ADD COLUMN transporter_name TEXT NOT NULL DEFAULT ''");
+    const miCols = sdb.prepare('PRAGMA table_info(mart_inquiries)').all().map((c) => c.name);
+    if (!miCols.includes('group_id')) sdb.exec("ALTER TABLE mart_inquiries ADD COLUMN group_id TEXT");
+    const mlCols = sdb.prepare('PRAGMA table_info(mart_listings)').all().map((c) => c.name);
+    if (!mlCols.includes('photo')) sdb.exec("ALTER TABLE mart_listings ADD COLUMN photo TEXT");
     layer = sqliteLayer();
   } else {
     const { Pool, types } = require('pg');
@@ -959,6 +994,17 @@ async function init() {
       // whose DDL already carries the wider check).
       await client.query("ALTER TABLE stock_movements DROP CONSTRAINT IF EXISTS stock_movements_type_check");
       await client.query("ALTER TABLE stock_movements ADD CONSTRAINT stock_movements_type_check CHECK (type IN ('purchase','opening','sale','adjustment','return'))");
+      // Business Mart v2 migration (same as the SQLite branch): quote
+      // payment terms, order dispatch details, bulk-inquiry grouping and
+      // listing photos — all nullable, existing rows stay NULL.
+      await client.query("ALTER TABLE mart_quotes ADD COLUMN IF NOT EXISTS advance_percent DOUBLE PRECISION");
+      await client.query("ALTER TABLE mart_quotes ADD COLUMN IF NOT EXISTS credit_days INTEGER");
+      await client.query("ALTER TABLE mart_orders ADD COLUMN IF NOT EXISTS advance_percent DOUBLE PRECISION");
+      await client.query("ALTER TABLE mart_orders ADD COLUMN IF NOT EXISTS credit_days INTEGER");
+      await client.query("ALTER TABLE mart_orders ADD COLUMN IF NOT EXISTS expected_delivery_date TEXT");
+      await client.query("ALTER TABLE mart_orders ADD COLUMN IF NOT EXISTS transporter_name TEXT NOT NULL DEFAULT ''");
+      await client.query("ALTER TABLE mart_inquiries ADD COLUMN IF NOT EXISTS group_id TEXT");
+      await client.query("ALTER TABLE mart_listings ADD COLUMN IF NOT EXISTS photo TEXT");
     } finally { client.release(); }
     layer = pgLayer();
   }

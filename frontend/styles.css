@@ -749,3 +749,16 @@ body.bz-intro-on{overflow:hidden}
   .lp-foot-grid{ grid-template-columns:1fr; gap:22px; }
   .lp-fact{ font-size:12.5px; padding:8px 13px; }
 }
+
+/* ---- Business Mart v2 ---- */
+.mk-verified{ display:inline-block; font-size:10.5px; font-weight:700; color:var(--blue-dark); background:var(--blue-soft); border-radius:99px; padding:1px 7px; margin-left:4px; vertical-align:middle; }
+.mk-thumb{ width:44px; height:44px; border-radius:10px; object-fit:cover; background:#F4F6FA; flex:none; }
+.mk-pic img{ width:100%; height:100%; object-fit:cover; border-radius:12px; }
+.mk-fav{ background:none; border:none; cursor:pointer; font-size:19px; line-height:1; padding:2px 4px; color:#C3CAD6; }
+.mk-fav.on{ color:var(--amber); }
+.mk-photo-prev{ max-width:180px; max-height:140px; border-radius:10px; display:block; margin-top:8px; }
+.mk-terms{ color:var(--blue-dark); font-weight:600; }
+.mk-group-strip{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.mk-group-chip{ border:1px solid var(--line); border-radius:12px; padding:8px 12px; cursor:pointer; background:#fff; font-size:12.5px; }
+.mk-group-chip:hover{ border-color:var(--blue); }
+.mk-group-chip.cur{ border-color:var(--blue); background:var(--blue-soft); cursor:default; }

@@ -98,15 +98,34 @@ function registerMart(app, deps) {
     return p;
   }
 
+  // "Verified" is earned, never assigned: a real-format GSTIN on the
+  // business + a phone number + a city. Computed fresh wherever a profile
+  // is serialized — no admin step, no stored flag to game.
+  const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+  function isVerifiedBiz(b, p) {
+    if (!b) return false;
+    const gstin = String(b.gstin || '').trim().toUpperCase();
+    return GSTIN_RE.test(gstin) &&
+      !!String(b.phone || '').trim() &&
+      !!String((p && p.city) || b.city || '').trim();
+  }
+
   async function sellerStats(bizId) {
     const r = await db.get(
       `SELECT COUNT(*) AS deals FROM mart_orders WHERE seller_business_id = ? AND status = 'delivered'`, bizId);
     const rr = await db.get(
       `SELECT AVG(rating) AS avg, COUNT(*) AS n FROM mart_orders WHERE seller_business_id = ? AND rating IS NOT NULL`, bizId);
+    const rb = await db.get(
+      `SELECT COUNT(*) AS c FROM (
+         SELECT buyer_business_id FROM mart_orders
+         WHERE seller_business_id = ? AND status = 'delivered'
+         GROUP BY buyer_business_id HAVING COUNT(*) >= 2
+       ) repeat_buyers`, bizId);
     return {
       deals: Number((r && r.deals) || 0),
       rating: rr && rr.n ? Math.round(Number(rr.avg) * 10) / 10 : null,
-      ratings_count: Number((rr && rr.n) || 0)
+      ratings_count: Number((rr && rr.n) || 0),
+      repeat_buyers: Number((rb && rb.c) || 0)
     };
   }
 
@@ -127,6 +146,7 @@ function registerMart(app, deps) {
       all_india: !!p.all_india,
       is_seller: !!p.is_seller,
       gst_registered: !!(b && b.gstin && String(b.gstin).trim()),
+      verified: isVerifiedBiz(b, p),
       since: b && b.created_at ? String(b.created_at).slice(0, 4) : '',
       ...st
     };
@@ -186,7 +206,8 @@ function registerMart(app, deps) {
     return {
       name: reveal ? (p.display_name || (b && b.name) || 'Business') : await hiddenName(inq.city || (b && b.city) || 'India', viewerBizId),
       hidden: !reveal,
-      gst_registered: !!(b && b.gstin && String(b.gstin).trim())
+      gst_registered: !!(b && b.gstin && String(b.gstin).trim()),
+      verified: isVerifiedBiz(b, p)
     };
   }
 
@@ -196,7 +217,7 @@ function registerMart(app, deps) {
       target_price: inq.target_price, city: inq.city, need_by: inq.need_by, frequency: inq.frequency,
       notes: inq.notes, show_name: !!inq.show_name, verified_only: !!inq.verified_only,
       status: inquiryState(inq), source: inq.source, product_id: inq.product_id,
-      target_business_id: inq.target_business_id, notified: inq.notified,
+      target_business_id: inq.target_business_id, group_id: inq.group_id || null, notified: inq.notified,
       created_at: inq.created_at, updated_at: inq.updated_at
     };
   }
@@ -205,6 +226,8 @@ function registerMart(app, deps) {
     return {
       id: q.id, inquiry_id: q.inquiry_id, seller_business_id: q.seller_business_id,
       price: q.price, moq: q.moq, delivery_days: q.delivery_days, payment_terms: q.payment_terms,
+      advance_percent: q.advance_percent == null ? null : Number(q.advance_percent),
+      credit_days: q.credit_days == null ? null : Number(q.credit_days),
       valid_days: q.valid_days, note: q.note, status: expired ? 'expired' : q.status,
       created_at: q.created_at, updated_at: q.updated_at
     };
@@ -217,10 +240,15 @@ function registerMart(app, deps) {
       id: o.id, order_no: orderNo(o.id), inquiry_id: o.inquiry_id, quote_id: o.quote_id,
       role: isBuyer ? 'buyer' : 'seller',
       product: o.product, qty: o.qty, unit: o.unit, price: o.price, total: o.total,
-      payment_terms: o.payment_terms, delivery_days: o.delivery_days,
+      payment_terms: o.payment_terms,
+      advance_percent: o.advance_percent == null ? null : Number(o.advance_percent),
+      credit_days: o.credit_days == null ? null : Number(o.credit_days),
+      delivery_days: o.delivery_days,
+      expected_delivery_date: o.expected_delivery_date || null,
+      transporter_name: o.transporter_name || '',
       status: o.status, step: ORDER_STEPS.indexOf(o.status),
       purchase_id: o.purchase_id, rating: o.rating, review: o.review,
-      other_party: { business_id: other.business_id, name: other.name, city: other.city, phone: other.phone || '', gst_registered: other.gst_registered, rating: other.rating },
+      other_party: { business_id: other.business_id, name: other.name, city: other.city, phone: other.phone || '', gst_registered: other.gst_registered, verified: other.verified, rating: other.rating },
       created_at: o.created_at, updated_at: o.updated_at
     };
   }
@@ -239,6 +267,7 @@ function registerMart(app, deps) {
         categories: list(p.categories), service_cities: list(p.service_cities),
         all_india: !!p.all_india, is_seller: !!p.is_seller,
         gst_registered: !!(b && b.gstin && String(b.gstin).trim()),
+        verified: isVerifiedBiz(b, p),
         phone: (b && b.phone) || ''
       }
     });
@@ -385,6 +414,54 @@ function registerMart(app, deps) {
     res.status(201).json({ inquiry: publicInquiry({ ...inq, notified: told.size }), notified: told.size });
   });
 
+  // Bulk inquiry: ONE requirement, many sellers. Creates one targeted
+  // inquiry per chosen seller, all sharing a group_id, so the buyer can
+  // compare the returning quotes side by side. Each seller is notified
+  // only about their own copy.
+  app.post('/api/mart/inquiries/bulk', ...guard, async (req, res) => {
+    const bizId = req.user.business_id;
+    const b = req.body || {};
+    const product = str(b.product, 120);
+    if (!product) return res.status(400).json({ error: 'product_required' });
+    if (!CATEGORIES.includes(b.category)) return res.status(400).json({ error: 'invalid_category' });
+    if (!validNum(b.qty) || Number(b.qty) <= 0) return res.status(400).json({ error: 'qty must be greater than 0' });
+    const unit = UNITS.includes(b.unit) ? b.unit : 'kg';
+    let target = null;
+    if (b.target_price !== undefined && b.target_price !== null && b.target_price !== '') {
+      if (!validNum(b.target_price) || Number(b.target_price) < 0) return res.status(400).json({ error: 'invalid_target_price' });
+      target = round2(b.target_price);
+    }
+    const city = str(b.city, 60);
+    if (!city) return res.status(400).json({ error: 'city_required' });
+    let needBy = b.need_by ? String(b.need_by) : null;
+    if (needBy && (!DATE_RE.test(needBy) || needBy < today())) return res.status(400).json({ error: 'invalid_need_by' });
+    const freq = FREQUENCIES.includes(b.frequency) ? b.frequency : 'One-time';
+    const rawIds = Array.isArray(b.seller_ids) ? b.seller_ids : [];
+    const sellerIds = [...new Set(rawIds.map((x) => Number(x)).filter((x) => x && x !== bizId))].slice(0, 20);
+    if (!sellerIds.length) return res.status(400).json({ error: 'pick_sellers' });
+    const sellers = [];
+    for (const sid of sellerIds) {
+      const p = await db.get('SELECT business_id FROM mart_profiles WHERE business_id = ? AND is_seller = 1', sid);
+      if (p) sellers.push(sid);
+    }
+    if (!sellers.length) return res.status(400).json({ error: 'pick_sellers' });
+    const groupId = 'grp-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1e6).toString(36);
+    const created = [];
+    for (const sid of sellers) {
+      const r = await db.run(
+        `INSERT INTO mart_inquiries (business_id, product, category, qty, unit, target_price, city, need_by, frequency, notes, show_name, verified_only, status, source, product_id, target_business_id, group_id, notified)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 'bulk', NULL, ?, ?, 1)`
+      , bizId, product, b.category, Number(b.qty), unit, target, city, needBy, freq, str(b.notes, 500),
+        b.show_name === false ? 0 : 1, b.verified_only ? 1 : 0, sid, groupId);
+      const inq = await db.get('SELECT * FROM mart_inquiries WHERE id = ?', r.lastInsertRowid);
+      created.push(inq);
+      const who = await buyerLabel(inq, null);
+      await notify(sid, 'lead', { en: `New lead: ${who.name} needs ${inq.qty} ${inq.unit} ${inq.product} (${inq.city})`, hi: `नई lead: ${who.name} को ${inq.qty} ${inq.unit} ${inq.product} चाहिए (${inq.city})`, hg: `Nayi lead: ${who.name} ko ${inq.qty} ${inq.unit} ${inq.product} chahiye (${inq.city})` }, 'lead', inq.id);
+    }
+    await auditLog(req, 'create', 'mart_inquiry', created[0].id, `Business Mart bulk inquiry (${sellers.length} sellers): ${Number(b.qty)} ${unit} ${product}`);
+    res.status(201).json({ group_id: groupId, inquiries: created.map(publicInquiry), notified: sellers.length });
+  });
+
   app.get('/api/mart/inquiries', ...guard, async (req, res) => {
     const bizId = req.user.business_id;
     const rows = await db.all('SELECT * FROM mart_inquiries WHERE business_id = ? ORDER BY id DESC LIMIT 200', bizId);
@@ -507,7 +584,16 @@ function registerMart(app, deps) {
     if (!validNum(b.delivery_days) || Number(b.delivery_days) < 0 || Number(b.delivery_days) > 90) return 'invalid_delivery_days';
     if (b.payment_terms && !TERMS.includes(b.payment_terms)) return 'invalid_payment_terms';
     if (b.valid_days !== undefined && b.valid_days !== '' && (!validNum(b.valid_days) || Number(b.valid_days) < 1 || Number(b.valid_days) > 30)) return 'invalid_valid_days';
+    if (b.advance_percent !== undefined && b.advance_percent !== null && b.advance_percent !== '' && (!validNum(b.advance_percent) || Number(b.advance_percent) < 0 || Number(b.advance_percent) > 100)) return 'invalid_advance_percent';
+    if (b.credit_days !== undefined && b.credit_days !== null && b.credit_days !== '' && (!validNum(b.credit_days) || Number(b.credit_days) < 0 || Number(b.credit_days) > 120)) return 'invalid_credit_days';
     return null;
+  }
+  // Optional payment-term split on a quote: null = seller didn't specify.
+  function quoteTerms(b) {
+    return {
+      advance_percent: b.advance_percent === undefined || b.advance_percent === null || b.advance_percent === '' ? null : Math.round(Number(b.advance_percent) * 100) / 100,
+      credit_days: b.credit_days === undefined || b.credit_days === null || b.credit_days === '' ? null : Math.round(Number(b.credit_days))
+    };
   }
 
   app.post('/api/mart/inquiries/:id/quotes', ...guard, async (req, res) => {
@@ -521,19 +607,20 @@ function registerMart(app, deps) {
     if (inq.verified_only && !(me.gstin && String(me.gstin).trim())) return res.status(403).json({ error: 'gst_required' });
     const b = req.body || {};
     const bad = validateQuoteBody(b); if (bad) return res.status(400).json({ error: bad });
+    const terms = quoteTerms(b);
     const vals = [round2(b.price), validNum(b.moq) ? Number(b.moq) : 0, Math.round(Number(b.delivery_days)),
-      TERMS.includes(b.payment_terms) ? b.payment_terms : TERMS[0], validNum(b.valid_days) ? Math.round(Number(b.valid_days)) : 3, str(b.note, 400)];
+      TERMS.includes(b.payment_terms) ? b.payment_terms : TERMS[0], terms.advance_percent, terms.credit_days, validNum(b.valid_days) ? Math.round(Number(b.valid_days)) : 3, str(b.note, 400)];
     const existing = await db.get('SELECT * FROM mart_quotes WHERE inquiry_id = ? AND seller_business_id = ?', inq.id, bizId);
     let qid;
     if (existing) {
       if (existing.status === 'accepted') return res.status(400).json({ error: 'quote_locked' });
       await db.run(
-        `UPDATE mart_quotes SET price=?, moq=?, delivery_days=?, payment_terms=?, valid_days=?, note=?, status='sent', updated_at=datetime('now') WHERE id = ?`
+        `UPDATE mart_quotes SET price=?, moq=?, delivery_days=?, payment_terms=?, advance_percent=?, credit_days=?, valid_days=?, note=?, status='sent', updated_at=datetime('now') WHERE id = ?`
       , ...vals, existing.id);
       qid = existing.id;
     } else {
       const r = await db.run(
-        `INSERT INTO mart_quotes (inquiry_id, seller_business_id, price, moq, delivery_days, payment_terms, valid_days, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO mart_quotes (inquiry_id, seller_business_id, price, moq, delivery_days, payment_terms, advance_percent, credit_days, valid_days, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       , inq.id, bizId, ...vals);
       qid = r.lastInsertRowid;
     }
@@ -559,10 +646,11 @@ function registerMart(app, deps) {
     const b = { ...x.q, ...(req.body || {}) };
     const bad = validateQuoteBody(b); if (bad) return res.status(400).json({ error: bad });
     const price = round2(b.price);
+    const terms = quoteTerms(b);
     await db.run(
-      `UPDATE mart_quotes SET price=?, moq=?, delivery_days=?, payment_terms=?, valid_days=?, note=?, updated_at=datetime('now') WHERE id = ?`
+      `UPDATE mart_quotes SET price=?, moq=?, delivery_days=?, payment_terms=?, advance_percent=?, credit_days=?, valid_days=?, note=?, updated_at=datetime('now') WHERE id = ?`
     , price, Number(b.moq) || 0, Math.round(Number(b.delivery_days)), TERMS.includes(b.payment_terms) ? b.payment_terms : x.q.payment_terms,
-      Math.round(Number(b.valid_days)) || 3, str(b.note, 400), x.q.id);
+      terms.advance_percent, terms.credit_days, Math.round(Number(b.valid_days)) || 3, str(b.note, 400), x.q.id);
     if (price !== x.q.price) {
       await db.run(`INSERT INTO mart_messages (quote_id, sender_business_id, kind, body, amount) VALUES (?, ?, 'update', ?, ?)`
       , x.q.id, req.user.business_id, `Updated price to ₹${price}/${x.inq.unit}`, price);
@@ -605,9 +693,10 @@ function registerMart(app, deps) {
       await tx.run(`UPDATE mart_quotes SET status='closed', updated_at=datetime('now') WHERE inquiry_id = ? AND id <> ? AND status = 'sent'`, x.inq.id, x.q.id);
       await tx.run(`UPDATE mart_inquiries SET status='ordered', updated_at=datetime('now') WHERE id = ?`, x.inq.id);
       const r = await tx.run(
-        `INSERT INTO mart_orders (inquiry_id, quote_id, buyer_business_id, seller_business_id, product, qty, unit, price, total, payment_terms, delivery_days, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'placed')`
-      , x.inq.id, x.q.id, bizId, x.q.seller_business_id, x.inq.product, x.inq.qty, x.inq.unit, x.q.price, total, x.q.payment_terms, x.q.delivery_days);
+        `INSERT INTO mart_orders (inquiry_id, quote_id, buyer_business_id, seller_business_id, product, qty, unit, price, total, payment_terms, advance_percent, credit_days, delivery_days, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'placed')`
+      , x.inq.id, x.q.id, bizId, x.q.seller_business_id, x.inq.product, x.inq.qty, x.inq.unit, x.q.price, total, x.q.payment_terms,
+        x.q.advance_percent == null ? null : Number(x.q.advance_percent), x.q.credit_days == null ? null : Number(x.q.credit_days), x.q.delivery_days);
       orderId = r.lastInsertRowid;
       await tx.commit();
     } catch (e) {
@@ -700,13 +789,24 @@ function registerMart(app, deps) {
 
   app.post('/api/mart/orders/:id/status', ...guard, async (req, res) => {
     const x = await partyOrder(req, res); if (!x) return;
-    const to = String((req.body || {}).status || '');
+    const body = req.body || {};
+    const to = String(body.status || '');
     const from = x.o.status;
     const allowed =
       (x.side === 'seller' && ((from === 'placed' && to === 'confirmed') || (from === 'confirmed' && to === 'dispatched') || (['placed', 'confirmed'].includes(from) && to === 'cancelled'))) ||
       (x.side === 'buyer' && from === 'placed' && to === 'cancelled');
     if (!allowed) return res.status(400).json({ error: 'invalid_status_change' });
-    await db.run(`UPDATE mart_orders SET status=?, updated_at=datetime('now') WHERE id = ?`, to, x.o.id);
+    if (to === 'dispatched') {
+      // Dispatch details ride along with the status change: when the goods
+      // are expected, and who is carrying them. Both optional.
+      let expDate = body.expected_delivery_date ? String(body.expected_delivery_date) : null;
+      if (expDate && (!DATE_RE.test(expDate) || expDate < today())) return res.status(400).json({ error: 'invalid_expected_date' });
+      await db.run(
+        `UPDATE mart_orders SET status='dispatched', expected_delivery_date=?, transporter_name=?, updated_at=datetime('now') WHERE id = ?`
+      , expDate, str(body.transporter_name, 80), x.o.id);
+    } else {
+      await db.run(`UPDATE mart_orders SET status=?, updated_at=datetime('now') WHERE id = ?`, to, x.o.id);
+    }
     if (to === 'cancelled') {
       // Re-open the buyer's inquiry so other sellers' quotes become live again.
       await db.run(`UPDATE mart_quotes SET status='cancelled', updated_at=datetime('now') WHERE id = ?`, x.o.quote_id);
@@ -715,7 +815,13 @@ function registerMart(app, deps) {
     }
     const otherId = x.side === 'seller' ? x.o.buyer_business_id : x.o.seller_business_id;
     const lbl = { confirmed: ['confirmed', 'पक्का हुआ', 'pakka hua'], dispatched: ['dispatched 🚚', 'भेज दिया गया 🚚', 'bhej diya gaya 🚚'], cancelled: ['cancelled', 'cancel हुआ', 'cancel hua'] }[to];
-    await notify(otherId, 'order_status', { en: `Order ${orderNo(x.o.id)} (${x.o.product}) was ${lbl[0]}`, hi: `Order ${orderNo(x.o.id)} (${x.o.product}) ${lbl[1]}`, hg: `Order ${orderNo(x.o.id)} (${x.o.product}) ${lbl[2]}` }, 'order', x.o.id);
+    let extra = '';
+    if (to === 'dispatched') {
+      const fresh = await db.get('SELECT expected_delivery_date, transporter_name FROM mart_orders WHERE id = ?', x.o.id);
+      if (fresh && fresh.expected_delivery_date) extra = ` · expected by ${fresh.expected_delivery_date}`;
+      if (fresh && fresh.transporter_name) extra += ` · via ${fresh.transporter_name}`;
+    }
+    await notify(otherId, 'order_status', { en: `Order ${orderNo(x.o.id)} (${x.o.product}) was ${lbl[0]}${extra}`, hi: `Order ${orderNo(x.o.id)} (${x.o.product}) ${lbl[1]}${extra}`, hg: `Order ${orderNo(x.o.id)} (${x.o.product}) ${lbl[2]}${extra}` }, 'order', x.o.id);
     await auditLog(req, 'update', 'mart_order', x.o.id, `Order ${orderNo(x.o.id)} → ${to}`);
     res.json({ order: await publicOrder(await db.get('SELECT * FROM mart_orders WHERE id = ?', x.o.id), req.user.business_id, new Map()) });
   });
@@ -724,6 +830,7 @@ function registerMart(app, deps) {
   app.post('/api/mart/orders/:id/receive', ...guard, async (req, res) => {
     const x = await partyOrder(req, res); if (!x) return;
     if (x.side !== 'buyer') return res.status(403).json({ error: 'buyer_only' });
+    if (x.o.purchase_id) return res.status(400).json({ error: 'already_received' });
     if (!['placed', 'confirmed', 'dispatched'].includes(x.o.status)) return res.status(400).json({ error: 'invalid_status_change' });
     const bizId = req.user.business_id;
     const o = x.o;
@@ -814,18 +921,106 @@ function registerMart(app, deps) {
     res.json({ url: `https://wa.me/${phone}?text=${encodeURIComponent(text)}` });
   });
 
+  // Repeat order: one tap on a past order creates a FRESH inquiry to the
+  // same seller, prefilled with the same item + quantity. Rates are never
+  // carried over as an order — the seller quotes again, like always.
+  app.post('/api/mart/orders/:id/repeat', ...guard, async (req, res) => {
+    const x = await partyOrder(req, res); if (!x) return;
+    if (x.side !== 'buyer') return res.status(403).json({ error: 'buyer_only' });
+    if (x.o.status === 'cancelled') return res.status(400).json({ error: 'order_cancelled' });
+    const bizId = req.user.business_id;
+    const o = x.o;
+    const orig = await db.get('SELECT * FROM mart_inquiries WHERE id = ?', o.inquiry_id);
+    const prof = await ensureProfile(bizId);
+    const biz = await getBiz(bizId);
+    const needBy = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+    const r = await db.run(
+      `INSERT INTO mart_inquiries (business_id, product, category, qty, unit, target_price, city, need_by, frequency, notes, show_name, verified_only, status, source, product_id, target_business_id, notified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'One-time', ?, 1, 0, 'open', 'reorder', ?, ?, 1)`
+    , bizId, o.product, (orig && orig.category) || guessCategory(o.product), Number(o.qty), o.unit,
+      null, prof.city || (biz && biz.city) || '', needBy,
+      `Repeat of order ${orderNo(o.id)}`, orig && orig.product_id ? orig.product_id : null, o.seller_business_id);
+    const inq = await db.get('SELECT * FROM mart_inquiries WHERE id = ?', r.lastInsertRowid);
+    const who = await buyerLabel(inq, null);
+    await notify(o.seller_business_id, 'lead', { en: `Repeat order request: ${who.name} needs ${inq.qty} ${inq.unit} ${inq.product} again`, hi: `दोबारा order की request: ${who.name} को फिर ${inq.qty} ${inq.unit} ${inq.product} चाहिए`, hg: `Dobara order ki request: ${who.name} ko phir ${inq.qty} ${inq.unit} ${inq.product} chahiye` }, 'lead', inq.id);
+    await auditLog(req, 'create', 'mart_inquiry', inq.id, `Business Mart repeat inquiry from ${orderNo(o.id)}: ${inq.qty} ${inq.unit} ${inq.product}`);
+    res.status(201).json({ inquiry: publicInquiry(inq) });
+  });
+
+  // Mart margin report (buyer): what Mart buying looks like against the
+  // CURRENT Workspace sell price of the matched product. The margin is an
+  // estimate at today's sell rate — the UI labels it exactly that way.
+  app.get('/api/mart/report', ...guard, async (req, res) => {
+    const bizId = req.user.business_id;
+    const rows = await db.all(
+      `SELECT * FROM mart_orders WHERE buyer_business_id = ? AND status = 'delivered' ORDER BY id DESC LIMIT 200`, bizId);
+    const spendAll = await db.get(
+      `SELECT COALESCE(SUM(total),0) AS s FROM mart_orders WHERE buyer_business_id = ? AND status <> 'cancelled'`, bizId);
+    const cache = new Map();
+    const out = [];
+    let spendDelivered = 0, expectedMargin = 0, marginKnown = 0;
+    for (const o of rows) {
+      spendDelivered += Number(o.total) || 0;
+      let prod = null;
+      if (o.purchase_id) {
+        const pi = await db.get('SELECT product_id FROM purchase_items WHERE purchase_id = ? ORDER BY id ASC LIMIT 1', o.purchase_id);
+        if (pi) prod = await db.get('SELECT id, name, sell_price FROM products WHERE id = ? AND business_id = ?', pi.product_id, bizId);
+      }
+      if (!prod) prod = await db.get('SELECT id, name, sell_price FROM products WHERE business_id = ? AND lower(name) = lower(?)', bizId, o.product);
+      const sell = prod && Number(prod.sell_price) > 0 ? Number(prod.sell_price) : null;
+      const mpu = sell == null ? null : round2(sell - Number(o.price));
+      const exp = sell == null ? null : round2((sell - Number(o.price)) * Number(o.qty));
+      if (exp != null) { expectedMargin += exp; marginKnown++; }
+      const seller = await publicSeller(o.seller_business_id, cache);
+      out.push({
+        order_id: o.id, order_no: orderNo(o.id), product: o.product, qty: o.qty, unit: o.unit,
+        buy_rate: Number(o.price), total: Number(o.total), seller_name: seller.name,
+        product_id: prod ? prod.id : null, sell_price: sell,
+        margin_per_unit: mpu, expected_margin: exp,
+        delivered_at: o.updated_at, purchase_id: o.purchase_id
+      });
+    }
+    res.json({
+      orders: out,
+      totals: {
+        delivered_orders: rows.length,
+        spend_delivered: round2(spendDelivered),
+        spend_all: round2(spendAll.s),
+        expected_margin: round2(expectedMargin),
+        margin_known_orders: marginKnown
+      }
+    });
+  });
+
   // ===================== listings + sellers (browse) =====================
   function publicListing(l) {
-    return { id: l.id, business_id: l.business_id, product_id: l.product_id, name: l.name, category: l.category, unit: l.unit, price: l.price, moq: l.moq, active: !!l.active, updated_at: l.updated_at };
+    return { id: l.id, business_id: l.business_id, product_id: l.product_id, name: l.name, category: l.category, unit: l.unit, price: l.price, moq: l.moq, photo: l.photo || null, active: !!l.active, updated_at: l.updated_at };
+  }
+  // One photo per listing, stored as a client-resized JPEG/PNG/WebP data
+  // URL. Anything else (or an oversized payload) is rejected, never stored.
+  function validPhoto(v) {
+    if (v === undefined || v === null || v === '') return { photo: null };
+    if (typeof v !== 'string' || v.length > 400000) return { error: 'invalid_photo' };
+    if (!/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v)) return { error: 'invalid_photo' };
+    return { photo: v };
+  }
+  async function viewerCity(bizId) {
+    const p = await db.get('SELECT city FROM mart_profiles WHERE business_id = ?', bizId);
+    if (p && p.city) return p.city;
+    const b = await getBiz(bizId);
+    return (b && b.city) || '';
   }
   app.get('/api/mart/listings', ...guard, async (req, res) => {
     const cat = String(req.query.category || '');
     const q = String(req.query.q || '').trim();
+    const myCity = await viewerCity(req.user.business_id);
     let sql = `SELECT l.* FROM mart_listings l JOIN mart_profiles mp ON mp.business_id = l.business_id WHERE l.active = 1 AND mp.is_seller = 1`;
     const params = [];
     if (cat && CATEGORIES.includes(cat)) { sql += ' AND l.category = ?'; params.push(cat); }
     if (q) { sql += ' AND (l.name LIKE ? OR mp.display_name LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
-    sql += ' ORDER BY l.updated_at DESC, l.id DESC LIMIT 200';
+    // Area-first: the viewer's own city before everyone else, then freshest.
+    sql += ' ORDER BY CASE WHEN lower(mp.city) = lower(?) THEN 0 ELSE 1 END, l.updated_at DESC, l.id DESC LIMIT 200';
+    params.push(myCity);
     const rows = await db.all(sql, ...params);
     const cache = new Map();
     const out = [];
@@ -848,20 +1043,28 @@ function registerMart(app, deps) {
     const prof = await ensureProfile(req.user.business_id);
     if (!prof.is_seller) return res.status(403).json({ error: 'not_seller' });
     const bad = validListing(b); if (bad) return res.status(400).json({ error: bad });
+    const ph = validPhoto(b.photo); if (ph.error) return res.status(400).json({ error: ph.error });
     let pid = null;
     if (b.product_id) { const p = await db.get('SELECT id FROM products WHERE id = ? AND business_id = ?', b.product_id, req.user.business_id); if (p) pid = p.id; }
     const r = await db.run(
-      `INSERT INTO mart_listings (business_id, product_id, name, category, unit, price, moq, active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
-    , req.user.business_id, pid, str(b.name, 120), b.category, UNITS.includes(b.unit) ? b.unit : 'kg', round2(b.price), Number(b.moq));
+      `INSERT INTO mart_listings (business_id, product_id, name, category, unit, price, moq, photo, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
+    , req.user.business_id, pid, str(b.name, 120), b.category, UNITS.includes(b.unit) ? b.unit : 'kg', round2(b.price), Number(b.moq), ph.photo);
     res.status(201).json({ listing: publicListing(await db.get('SELECT * FROM mart_listings WHERE id = ?', r.lastInsertRowid)) });
   });
   app.put('/api/mart/listings/:id', ...guard, async (req, res) => {
     const l = await db.get('SELECT * FROM mart_listings WHERE id = ? AND business_id = ?', req.params.id, req.user.business_id);
     if (!l) return res.status(404).json({ error: 'listing_not_found' });
-    const b = { ...l, ...(req.body || {}) };
+    const raw = req.body || {};
+    const b = { ...l, ...raw };
     const bad = validListing(b); if (bad) return res.status(400).json({ error: bad });
-    await db.run(`UPDATE mart_listings SET name=?, category=?, unit=?, price=?, moq=?, active=?, updated_at=datetime('now') WHERE id = ?`
-    , str(b.name, 120), b.category, UNITS.includes(b.unit) ? b.unit : l.unit, round2(b.price), Number(b.moq), b.active ? 1 : 0, l.id);
+    // Photo is only touched when the client sends the field (null removes).
+    let photo = l.photo;
+    if (Object.prototype.hasOwnProperty.call(raw, 'photo')) {
+      const ph = validPhoto(raw.photo); if (ph.error) return res.status(400).json({ error: ph.error });
+      photo = ph.photo;
+    }
+    await db.run(`UPDATE mart_listings SET name=?, category=?, unit=?, price=?, moq=?, photo=?, active=?, updated_at=datetime('now') WHERE id = ?`
+    , str(b.name, 120), b.category, UNITS.includes(b.unit) ? b.unit : l.unit, round2(b.price), Number(b.moq), photo, b.active ? 1 : 0, l.id);
     res.json({ listing: publicListing(await db.get('SELECT * FROM mart_listings WHERE id = ?', l.id)) });
   });
   app.delete('/api/mart/listings/:id', ...guard, async (req, res) => {
@@ -870,27 +1073,61 @@ function registerMart(app, deps) {
     res.json({ ok: true });
   });
 
+  async function favouriteSet(bizId) {
+    const rows = await db.all('SELECT seller_business_id FROM mart_favourites WHERE business_id = ?', bizId);
+    return new Set(rows.map((r) => r.seller_business_id));
+  }
   app.get('/api/mart/sellers', ...guard, async (req, res) => {
     const cat = String(req.query.category || '');
     const q = norm(req.query.q);
     const rows = await db.all('SELECT business_id, display_name, categories FROM mart_profiles WHERE is_seller = 1 ORDER BY display_name ASC');
     const cache = new Map();
+    const favs = await favouriteSet(req.user.business_id);
     const out = [];
     for (const p of rows) {
       if (cat && CATEGORIES.includes(cat) && !list(p.categories).includes(cat)) continue;
       if (q && !norm(p.display_name).includes(q)) continue;
-      out.push({ ...(await publicSeller(p.business_id, cache)), mine: p.business_id === req.user.business_id });
+      out.push({ ...(await publicSeller(p.business_id, cache)), mine: p.business_id === req.user.business_id, is_favourite: favs.has(p.business_id) });
     }
+    // Area-first: sellers in the viewer's own city first (name order kept
+    // inside each group), then everyone else.
+    const myCity = norm(await viewerCity(req.user.business_id));
+    if (myCity) out.sort((a, b) => (norm(b.city) === myCity ? 1 : 0) - (norm(a.city) === myCity ? 1 : 0));
     res.json({ sellers: out });
   });
   app.get('/api/mart/sellers/:id', ...guard, async (req, res) => {
     const p = await db.get('SELECT * FROM mart_profiles WHERE business_id = ? AND is_seller = 1', req.params.id);
     if (!p) return res.status(404).json({ error: 'seller_not_found' });
     const seller = await publicSeller(p.business_id);
+    const favs = await favouriteSet(req.user.business_id);
+    seller.is_favourite = favs.has(p.business_id);
     const listings = await db.all('SELECT * FROM mart_listings WHERE business_id = ? AND active = 1 ORDER BY name ASC', p.business_id);
     const reviews = await db.all(
-      `SELECT rating, review, product, updated_at FROM mart_orders WHERE seller_business_id = ? AND rating IS NOT NULL ORDER BY updated_at DESC LIMIT 5`, p.business_id);
+      `SELECT rating, review, product, updated_at FROM mart_orders WHERE seller_business_id = ? AND rating IS NOT NULL ORDER BY updated_at DESC LIMIT 20`, p.business_id);
     res.json({ seller, listings: listings.map(publicListing), reviews });
+  });
+
+  // ===================== favourites (Mere Wholesaler) =====================
+  app.get('/api/mart/favourites', ...guard, async (req, res) => {
+    const rows = await db.all('SELECT seller_business_id FROM mart_favourites WHERE business_id = ? ORDER BY id DESC', req.user.business_id);
+    const cache = new Map();
+    const out = [];
+    for (const r of rows) out.push({ ...(await publicSeller(r.seller_business_id, cache)), is_favourite: true });
+    res.json({ favourites: out });
+  });
+  app.post('/api/mart/favourites/:sellerId', ...guard, async (req, res) => {
+    const bizId = req.user.business_id;
+    const sid = Number(req.params.sellerId);
+    if (!sid || sid === bizId) return res.status(400).json({ error: 'invalid_seller' });
+    const p = await db.get('SELECT business_id FROM mart_profiles WHERE business_id = ? AND is_seller = 1', sid);
+    if (!p) return res.status(404).json({ error: 'seller_not_found' });
+    const exists = await db.get('SELECT id FROM mart_favourites WHERE business_id = ? AND seller_business_id = ?', bizId, sid);
+    if (!exists) await db.run('INSERT INTO mart_favourites (business_id, seller_business_id) VALUES (?, ?)', bizId, sid);
+    res.json({ ok: true, is_favourite: true });
+  });
+  app.delete('/api/mart/favourites/:sellerId', ...guard, async (req, res) => {
+    await db.run('DELETE FROM mart_favourites WHERE business_id = ? AND seller_business_id = ?', req.user.business_id, Number(req.params.sellerId));
+    res.json({ ok: true, is_favourite: false });
   });
 
   // ===================== notifications =====================

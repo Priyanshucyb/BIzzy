@@ -434,7 +434,7 @@ $('resetForm').addEventListener('submit', async (e) => {
 $('logoutBtn').addEventListener('click', async () => {
   try { await api('POST', '/api/auth/logout'); } catch (e) { /* ignore */ }
   token = null; me = null; localStorage.removeItem('bos_token');
-  showView('view-login'); applyLang('en');
+  showLanding();
 });
 
 // ---------- nav ----------
@@ -1572,7 +1572,7 @@ $('admSettingsForm').addEventListener('submit', async (e) => {
 $('adminLogoutBtn').addEventListener('click', async () => {
   try { await api('POST', '/api/auth/logout'); } catch (e) { /* ignore */ }
   token = null; me = null; localStorage.removeItem('bos_token');
-  showView('view-login'); applyLang('en');
+  showLanding();
 });
 
 // ---------- Stage 6: data backup download (owner-only card) ----------
