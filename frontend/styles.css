@@ -74,6 +74,13 @@ td{ padding:11px 10px; border-bottom:1px solid #EFF3F9; vertical-align:middle; }
 tr:last-child td{ border-bottom:none; }
 .tag{ font-size:11px; font-weight:700; padding:4px 10px; border-radius:99px; white-space:nowrap; }
 .tag-paid{ background:var(--green-soft); color:var(--green); }
+.tag-cancelled{ background:#ececec; color:#555; text-decoration:line-through; }
+.ok-note{ background:var(--green-soft); color:var(--green); border-radius:10px; padding:9px 12px; font-size:13px; font-weight:600; margin-top:10px; }
+.recent-strip{ margin-bottom:10px; }
+.recent-label{ font-size:12px; font-weight:700; color:var(--muted); margin-bottom:6px; }
+.recent-chips{ display:flex; gap:7px; overflow-x:auto; padding-bottom:4px; -webkit-overflow-scrolling:touch; }
+.recent-chip{ flex:none; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:99px; padding:7px 12px; font-size:12.5px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.recent-chip:hover{ border-color:var(--blue); color:var(--blue); }
 .tag-part{ background:var(--amber-soft); color:var(--amber); }
 .tag-pend{ background:var(--red-soft); color:var(--red); }
 .field{ margin-bottom:12px; }
@@ -200,7 +207,8 @@ tr.clickable{ cursor:pointer; } tr.clickable:hover td{ background:#F7FAFF; }
   body{ background:#fff; }
   body > *:not(#printBill):not(#printReport){ display:none !important; }
   body.printing-report #printBill{ display:none !important; }
-  #printBill{ display:block !important; font-family:"Segoe UI", system-ui, "Noto Sans Devanagari", sans-serif; color:#111; max-width:720px; margin:0 auto; padding:10px; }
+  @page{ size:A4 portrait; margin:11mm; }
+  #printBill{ display:flex !important; flex-direction:column; min-height:270mm; font-family:"Segoe UI", system-ui, "Noto Sans Devanagari", sans-serif; color:#111; margin:0; padding:0; }
   #printReport{ font-family:"Segoe UI", system-ui, "Noto Sans Devanagari", sans-serif; color:#111; max-width:720px; margin:0 auto; padding:10px; }
   body.printing-report #printReport{ display:block !important; }
   #printReport .pb-head{ text-align:center; border-bottom:2px solid #111; padding-bottom:10px; margin-bottom:12px; }
@@ -211,18 +219,48 @@ tr.clickable{ cursor:pointer; } tr.clickable:hover td{ background:#F7FAFF; }
   #printReport td{ border-bottom:1px solid #CCC; padding:6px; }
   #printReport .pb-num{ text-align:right; }
   #printReport .pb-thanks{ text-align:center; margin-top:26px; font-size:13px; color:#333; }
-  #printBill .pb-head{ text-align:center; border-bottom:2px solid #111; padding-bottom:10px; margin-bottom:12px; }
-  #printBill .pb-head h1{ font-size:24px; margin-bottom:2px; }
-  #printBill .pb-head .pb-sub{ font-size:12.5px; color:#333; }
-  #printBill .pb-meta{ display:flex; justify-content:space-between; font-size:13px; margin-bottom:12px; }
-  #printBill table{ width:100%; border-collapse:collapse; font-size:13px; }
-  #printBill th{ border-bottom:1.5px solid #111; text-align:left; padding:6px 6px; font-size:12px; text-transform:none; letter-spacing:0; color:#111; }
-  #printBill td{ border-bottom:1px solid #CCC; padding:6px; }
+  /* Bill PDF (founder-approved A4, minimal-ink B/W — colour ONLY in
+     the logo image): no filled bands anywhere; ink = text + rules.
+     The footer (note + signature + thanks) is pinned to the page
+     bottom via the flex column + margin-top:auto; on multi-page
+     bills it lands at the last page's bottom. */
+  #printBill .pb-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+  #printBill .pb-brand{ display:flex; align-items:center; gap:14px; }
+  #printBill .pb-logo{ width:62px; height:62px; border-radius:14px; }
+  #printBill .pb-brand h1{ font-size:29px; font-weight:800; margin:0; letter-spacing:-.01em; }
+  #printBill .pb-sub{ font-size:12.5px; color:#555; margin-top:3px; }
+  #printBill .pb-inv{ text-align:right; }
+  #printBill .pb-inv-word{ font-size:26px; font-weight:800; letter-spacing:.3em; }
+  #printBill .pb-inv .pb-sub{ font-weight:700; color:#222; }
+  #printBill .pb-rule{ border-top:2.5px solid #000; margin-top:13px; }
+  #printBill .pb-meta{ display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; border:1px solid #999; border-radius:8px; padding:9px 14px; font-size:13px; margin-top:12px; }
+  #printBill .pb-cancelled{ margin-top:10px; border:1.5px solid #000; padding:6px 10px; font-weight:800; letter-spacing:.05em; text-align:center; font-size:13.5px; }
+  #printBill table.pb-table{ width:100%; border-collapse:collapse; font-size:13.5px; margin-top:15px; }
+  #printBill .pb-table th{ border-top:2px solid #000; border-bottom:2px solid #000; text-align:left; padding:8px; font-size:12.5px; color:#000; background:#fff; text-transform:none; letter-spacing:0; }
+  #printBill .pb-table td{ border-bottom:1px solid #DDD; padding:9px 8px; }
   #printBill .pb-num{ text-align:right; }
-  #printBill .pb-sums{ margin-top:12px; margin-left:auto; width:260px; font-size:13.5px; }
-  #printBill .pb-sums .r{ display:flex; justify-content:space-between; padding:4px 0; }
-  #printBill .pb-sums .r.total{ border-top:1.5px solid #111; font-weight:800; font-size:16px; margin-top:4px; padding-top:8px; }
-  #printBill .pb-thanks{ text-align:center; margin-top:26px; font-size:13px; color:#333; }
+  #printBill .pb-sno{ width:42px; color:#444; }
+  #printBill .pb-bottom{ display:flex; gap:30px; margin-top:20px; align-items:flex-start; }
+  #printBill .pb-pay{ border:1px solid #999; border-radius:10px; padding:15px 18px; text-align:center; width:248px; flex:none; }
+  #printBill .pb-pay-h{ font-size:11.5px; font-weight:700; letter-spacing:.18em; color:#444; margin-bottom:9px; }
+  #printBill .pb-pay img{ width:148px; height:148px; object-fit:contain; }
+  #printBill .pb-upi{ margin-top:9px; font-size:14px; font-weight:700; word-break:break-all; }
+  #printBill .pb-pay-cap{ font-size:11.5px; color:#555; margin-top:3px; }
+  #printBill .pb-sums{ flex:1; font-size:14px; min-width:250px; }
+  #printBill .pb-sums .r{ display:flex; justify-content:space-between; padding:5px 0; }
+  #printBill .pb-sums .r.sub{ color:#444; font-size:13px; }
+  #printBill .pb-grand{ display:flex; justify-content:space-between; align-items:center; border-top:3px double #000; border-bottom:3px double #000; padding:9px 0; margin-top:9px; font-size:20px; font-weight:800; }
+  #printBill .pb-words{ text-align:right; font-style:italic; font-size:12px; color:#333; margin-top:6px; }
+  #printBill .pb-footer{ margin-top:auto; padding-top:24px; }
+  #printBill .pb-foot-row{ display:flex; justify-content:space-between; gap:30px; align-items:flex-end; }
+  #printBill .pb-note{ font-size:11.5px; color:#444; max-width:290px; line-height:1.5; }
+  #printBill .pb-sign{ min-width:250px; }
+  #printBill .pb-sign-for{ font-size:13px; margin-bottom:42px; text-align:right; }
+  #printBill .pb-sign-line{ border-top:1.5px solid #000; }
+  #printBill .pb-sign-cap{ font-size:12px; color:#333; margin-top:6px; text-align:center; }
+  #printBill .pb-thanks-row{ display:flex; justify-content:space-between; align-items:center; border-top:1px dashed #999; margin-top:15px; padding-top:11px; }
+  #printBill .pb-thanks{ font-size:14.5px; font-weight:800; }
+  #printBill .pb-credit{ font-size:11px; color:#777; }
 }
 
 /* ===== Guided onboarding (Updates Stage D) — mobile-first ===== */

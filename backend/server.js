@@ -18,7 +18,7 @@
 // bill numbers, and stock that only ever moves as stock_movements.
 // + SaaS Stage 2 (SaaS wala hisa): email-OTP signup + OTP forgot-password
 // (mailer.js; dev mode logs the code when no mail config — never in API
-// responses), 14-day free trial + plans/subscription with grace → read-only
+// responses), 30-day free trial + plans/subscription with grace → read-only
 // enforcement, manual/UPI payment claims + Razorpay-ready gateway endpoints
 // (501 until the founder's keys are configured), DILIGENCE super admin
 // (platform_admins — separate from business users), 5-minute onboarding
@@ -157,6 +157,7 @@ function publicBusiness(b) {
     id: b.id, name: b.name, owner_name: b.owner_name, phone: b.phone, city: b.city,
     gst_enabled: !!b.gst_enabled, gstin: b.gstin,
     upi_id: b.upi_id || '', upi_payee_name: b.upi_payee_name || '',
+    payment_qr: b.payment_qr || null,
     language: ['hi', 'hg'].includes(b.language) ? b.language : 'en',
     setup_complete: !!(b.name && b.name.trim()),
     updated_at: b.updated_at, sync_status: b.sync_status
@@ -252,7 +253,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   const v = await verifyOtp(emailNorm, 'signup', otp);
   if (v.error) return res.status(400).json(v);
   await db.run('DELETE FROM pending_signups WHERE user_id = ?', u.id);
-  await ensureSubscription(u.business_id); // 14-day trial starts at verification
+  await ensureSubscription(u.business_id); // 30-day trial starts at verification
   const token = makeToken();
   await db.run('INSERT INTO sessions (token, user_id) VALUES (?, ?)', token, u.id);
   res.json({ token, user: publicUser(u), business: publicBusiness(await getBusiness(u.business_id)) });
@@ -440,15 +441,18 @@ async function verifyOtp(email, purpose, code) {
 //   now ≤ trial_end+grace   → 'grace'
 //   otherwise               → 'expired'
 // Read-only = expired or blocked. Grace keeps full access.
+const TRIAL_DAYS = 30; // founder call (2026-11-22): free trial is 30 days
 async function ensureSubscription(bizId) {
   let sub = await db.get('SELECT * FROM subscriptions WHERE business_id = ?', bizId);
   if (!sub) {
     // New business — or a pre-Stage-2 business meeting this code for the
-    // first time: a fresh 14-day trial starts NOW (migration rule — the
-    // demo seed and every existing shop keep full access).
+    // first time: a fresh 30-day trial starts NOW (migration rule — the
+    // demo seed and every existing shop keep full access). Existing
+    // subscriptions keep their stored trial_ends_at untouched — the new
+    // length applies only when a row is first created here.
     await db.run(
       `INSERT INTO subscriptions (business_id, trial_ends_at, grace_days) VALUES (?, ?, 7)`
-    , bizId, addDaysTs(fmtTs(new Date()), 14));
+    , bizId, addDaysTs(fmtTs(new Date()), TRIAL_DAYS));
     sub = await db.get('SELECT * FROM subscriptions WHERE business_id = ?', bizId);
   }
   return sub;
@@ -1371,11 +1375,23 @@ app.put('/api/business', requireAuth, requireOwner, async (req, res) => {
   if (next.upi_id && !UPI_ID_RE.test(next.upi_id)) {
     return res.status(400).json({ error: 'invalid_upi_id' });
   }
+  // Payment QR (bill PDF): the shop's OWN uploaded UPI QR image, stored
+  // as a JPEG/PNG data URL exactly like Mart listing photos (client-side
+  // canvas resize, ~400KB cap). '' / null clears it; anything that is
+  // not an image data URL is rejected, never stored.
+  let paymentQr = cur.payment_qr || null;
+  if (body.payment_qr !== undefined) {
+    if (body.payment_qr === null || body.payment_qr === '') paymentQr = null;
+    else if (typeof body.payment_qr === 'string' && /^data:image\/(jpeg|jpg|png);base64,/.test(body.payment_qr)) {
+      if (body.payment_qr.length > 560000) return res.status(400).json({ error: 'qr_image_too_large' });
+      paymentQr = body.payment_qr;
+    } else return res.status(400).json({ error: 'invalid_qr_image' });
+  }
   if (!next.gst_enabled) next.gstin = body.gstin !== undefined ? next.gstin : cur.gstin;
   await db.run(
-    `UPDATE businesses SET name=?, owner_name=?, phone=?, city=?, gst_enabled=?, gstin=?, upi_id=?, upi_payee_name=?, language=?,
+    `UPDATE businesses SET name=?, owner_name=?, phone=?, city=?, gst_enabled=?, gstin=?, upi_id=?, upi_payee_name=?, language=?, payment_qr=?,
        updated_at=datetime('now'), sync_status='local' WHERE id=?`
-  , next.name, next.owner_name, next.phone, next.city, next.gst_enabled, next.gstin, next.upi_id, next.upi_payee_name, next.language, req.user.business_id);
+  , next.name, next.owner_name, next.phone, next.city, next.gst_enabled, next.gstin, next.upi_id, next.upi_payee_name, next.language, paymentQr, req.user.business_id);
   res.json({ business: publicBusiness(await getBusiness(req.user.business_id)) });
 });
 
@@ -1877,7 +1893,7 @@ async function customerRow(bizId, id) {
   return await db.get(
     `SELECT c.*, COALESCE(SUM(i.total),0) AS total_billed, COALESCE(SUM(i.paid_amount),0) AS total_received,
        ${CUSTOMER_RETURNS_SQL}
-     FROM customers c LEFT JOIN invoices i ON i.customer_id = c.id AND i.business_id = c.business_id
+     FROM customers c LEFT JOIN invoices i ON i.customer_id = c.id AND i.business_id = c.business_id AND i.cancelled_at IS NULL
      WHERE c.id = ? AND c.business_id = ? GROUP BY c.id`
   , id, bizId);
 }
@@ -1886,7 +1902,7 @@ app.get('/api/customers', requireAuth, requireBillingAccess, async (req, res) =>
   const rows = await db.all(
     `SELECT c.*, COALESCE(SUM(i.total),0) AS total_billed, COALESCE(SUM(i.paid_amount),0) AS total_received,
        ${CUSTOMER_RETURNS_SQL}
-     FROM customers c LEFT JOIN invoices i ON i.customer_id = c.id AND i.business_id = c.business_id
+     FROM customers c LEFT JOIN invoices i ON i.customer_id = c.id AND i.business_id = c.business_id AND i.cancelled_at IS NULL
      WHERE c.business_id = ? GROUP BY c.id ORDER BY c.name ASC`
   , req.user.business_id);
   res.json({ customers: rows.map(publicCustomer) });
@@ -1917,10 +1933,10 @@ app.get('/api/customers/:id', requireAuth, requireBillingAccess, async (req, res
     `SELECT MIN(due_date) AS next_due_date,
        COALESCE(SUM(total - paid_amount), 0) AS total_due_amount,
        COALESCE(SUM(CASE WHEN due_date = (SELECT MIN(due_date) FROM invoices
-         WHERE business_id = ? AND customer_id = ? AND due_date IS NOT NULL AND paid_amount < total)
+         WHERE business_id = ? AND customer_id = ? AND due_date IS NOT NULL AND paid_amount < total AND cancelled_at IS NULL)
          THEN total - paid_amount ELSE 0 END), 0) AS amount_on_next
      FROM invoices
-     WHERE business_id = ? AND customer_id = ? AND due_date IS NOT NULL AND paid_amount < total`
+     WHERE business_id = ? AND customer_id = ? AND due_date IS NOT NULL AND paid_amount < total AND cancelled_at IS NULL`
   , bizId, c.id, bizId, c.id);
   const dueInfo = due && due.next_due_date ? {
     next_due_date: due.next_due_date,
@@ -1992,7 +2008,7 @@ app.get('/api/public/hisab/:token', async (req, res) => {
   const pub = publicCustomer(full);
   const bills = await db.all(
     `SELECT bill_no, date, total, paid_amount, kind FROM invoices
-     WHERE customer_id = ? AND business_id = ? ORDER BY id DESC`
+     WHERE customer_id = ? AND business_id = ? AND cancelled_at IS NULL ORDER BY id DESC`
   , c.id, bizId);
   const payments = await db.all(
     `SELECT cp.date AS date, cp.amount AS amount, cp.mode AS mode
@@ -2046,6 +2062,7 @@ app.delete('/api/customers/:id', requireAuth, requireBillingAccess, async (req, 
 
 // ---------- invoices ----------
 function invoiceStatus(inv) {
+  if (inv.cancelled_at) return 'cancelled';
   if (Number(inv.paid_amount) >= Number(inv.total)) return 'paid';
   if (Number(inv.paid_amount) > 0) return 'partial';
   return 'pending';
@@ -2083,6 +2100,9 @@ function publicInvoice(inv) {
     status: invoiceStatus(inv), payment_mode: inv.payment_mode || null,
     due_date: inv.due_date || null,
     kind: inv.kind || 'sale',
+    cancelled: !!inv.cancelled_at,
+    cancelled_at: inv.cancelled_at || null,
+    cancel_reason: inv.cancel_reason || null,
     updated_at: inv.updated_at, sync_status: inv.sync_status
   };
 }
@@ -2129,6 +2149,38 @@ app.get('/api/invoices', requireAuth, requireBillingAccess, async (req, res) => 
     `SELECT * FROM invoices WHERE business_id = ? ORDER BY id DESC`
   , req.user.business_id);
   res.json({ invoices: rows.map(publicInvoice) });
+});
+
+// ---------- Recent items strip (New Bill screen) ----------
+// The shop's most recently billed distinct products (latest bill first,
+// ~10), each with the rate it was last billed at. Cancelled bills are
+// excluded. Billing is staff-allowed, so this is too.
+app.get('/api/billing/recent-items', requireAuth, requireBillingAccess, async (req, res) => {
+  const bizId = req.user.business_id;
+  // Portable across SQLite + Postgres: newest bill lines first, keep
+  // the first (latest) line per product until 10 distinct products.
+  const rows = await db.all(
+    `SELECT ii.product_id AS product_id, ii.product_name AS name,
+            ii.sell_price AS last_rate, p.unit AS unit
+     FROM invoice_items ii
+     JOIN invoices i ON i.id = ii.invoice_id AND i.business_id = ii.business_id
+     LEFT JOIN products p ON p.id = ii.product_id AND p.business_id = ii.business_id
+     WHERE ii.business_id = ? AND i.kind = 'sale' AND i.cancelled_at IS NULL AND ii.product_id IS NOT NULL
+     ORDER BY i.id DESC, ii.id DESC
+     LIMIT 300`
+  , bizId);
+  const seen = new Set();
+  const items = [];
+  for (const r of rows) {
+    if (seen.has(r.product_id)) continue;
+    seen.add(r.product_id);
+    items.push({
+      product_id: r.product_id, name: r.name,
+      last_rate: Number(r.last_rate), unit: r.unit || 'pcs'
+    });
+    if (items.length >= 10) break;
+  }
+  res.json({ items });
 });
 
 app.get('/api/invoices/:id', requireAuth, requireBillingAccess, async (req, res) => {
@@ -2181,13 +2233,18 @@ app.get('/api/invoices/:id', requireAuth, requireBillingAccess, async (req, res)
     business: {
       name: biz ? biz.name : '', owner_name: biz ? biz.owner_name : '',
       phone: biz ? biz.phone : '', city: biz ? biz.city : '',
-      gstin: biz ? biz.gstin : '', gst_enabled: !!inv.gst_enabled
+      gstin: biz ? biz.gstin : '', gst_enabled: !!inv.gst_enabled,
+      // Bill PDF redesign: the shop's UPI ID + its OWN uploaded payment
+      // QR image — the printed bill shows ONLY the uploaded QR (never an
+      // amount-generated one), and no QR block at all when none is set.
+      upi_id: biz ? (biz.upi_id || '') : '',
+      payment_qr: biz ? (biz.payment_qr || null) : null
     },
     // Updates Stage A: scan-to-pay QR for the exact balance due — null
     // when no UPI ID is set or the bill is fully paid (nothing is shown).
     // Feature 2: the amount is the NET balance (returns subtracted) —
     // with no returns this is exactly the old pending_amount.
-    upi_qr: upiQrFor(biz, netPending, inv.bill_no),
+    upi_qr: inv.cancelled_at ? null : upiQrFor(biz, netPending, inv.bill_no),
     // Updates Stage B: top-plan gate + readiness for the portal-docs area.
     portal_docs: portalDocs,
     customer: customer ? publicCustomer(customer) : null,
@@ -2235,6 +2292,7 @@ function sendJsonDownload(res, filename, obj) {
 
 app.get('/api/invoices/:id/eway-json', requireAuth, requireBillingAccess, requireTopPlan, async (req, res) => {
   const d = await loadPortalDocData(req.user.business_id, req.params.id);
+  if (d && d.inv && d.inv.cancelled_at) return res.status(400).json({ error: 'invoice_cancelled' });
   if (!d) return res.status(404).json({ error: 'invoice not found' });
   const missing = portalMissingFields(d, 'eway');
   if (missing.length) return res.status(400).json({ error: 'missing_fields', missing_fields: missing });
@@ -2277,6 +2335,7 @@ app.get('/api/invoices/:id/eway-json', requireAuth, requireBillingAccess, requir
 
 app.get('/api/invoices/:id/einvoice-json', requireAuth, requireBillingAccess, requireTopPlan, async (req, res) => {
   const d = await loadPortalDocData(req.user.business_id, req.params.id);
+  if (d && d.inv && d.inv.cancelled_at) return res.status(400).json({ error: 'invoice_cancelled' });
   if (!d) return res.status(404).json({ error: 'invoice not found' });
   const missing = portalMissingFields(d, 'einvoice');
   if (missing.length) return res.status(400).json({ error: 'missing_fields', missing_fields: missing });
@@ -2485,6 +2544,7 @@ app.post('/api/invoices/:id/due-date', requireAuth, requireBillingAccess, async 
   const bizId = req.user.business_id;
   const inv = await getOwnedInvoice(bizId, req.params.id);
   if (!inv) return res.status(404).json({ error: 'invoice not found' });
+  if (inv.cancelled_at) return res.status(400).json({ error: 'invoice_cancelled' });
   const parsed = parseDueDateInput(req.body || {});
   if (parsed.error) return res.status(400).json({ error: parsed.error });
   if (!parsed.given) return res.status(400).json({ error: 'due_date is required' });
@@ -2500,6 +2560,7 @@ app.post('/api/invoices/:id/payments', requireAuth, requireBillingAccess, async 
   const bizId = req.user.business_id;
   const inv = await getOwnedInvoice(bizId, req.params.id);
   if (!inv) return res.status(404).json({ error: 'invoice not found' });
+  if (inv.cancelled_at) return res.status(400).json({ error: 'invoice_cancelled' });
   const b = req.body || {};
   if (!validNum(b.amount) || Number(b.amount) <= 0) return res.status(400).json({ error: 'amount must be greater than 0' });
   const amount = round2(Number(b.amount));
@@ -2526,6 +2587,182 @@ app.post('/api/invoices/:id/payments', requireAuth, requireBillingAccess, async 
     await tx.rollback();
     return res.status(500).json({ error: 'could not record payment' });
   }
+});
+
+// ---------- Bill cancel / edit (owner-only) ----------
+// Cancel = exact reversal: the bill's stock goes back through stock
+// movements ('adjustment', same pattern as manual stock corrections),
+// its customer_payments rows are removed (so day-end collections and
+// hisab stay consistent) and cancelled_at/cancel_reason mark the row.
+// Every aggregate query filters cancelled_at IS NULL, so a cancelled
+// bill drops out of sales / pending / GST / GSTR-1 / day-end / hisab /
+// dashboard — but stays visible in History with its reason.
+// Edit = one transaction: reverse the old bill (stock back, payments
+// removed), then apply the new lines with the SAME bill id + bill_no.
+// A bill that already has sales returns can neither be cancelled nor
+// edited — the return rows point at its items; error 'has_returns'.
+app.post('/api/invoices/:id/cancel', requireAuth, requireOwner, async (req, res) => {
+  const bizId = req.user.business_id;
+  const inv = await getOwnedInvoice(bizId, req.params.id);
+  if (!inv) return res.status(404).json({ error: 'invoice not found' });
+  const reason = String((req.body || {}).reason || '').trim();
+  if (!reason) return res.status(400).json({ error: 'cancel_reason_required' });
+  if (inv.cancelled_at) return res.status(400).json({ error: 'already_cancelled' });
+  const retCount = await db.get('SELECT COUNT(*) AS c FROM returns WHERE invoice_id = ? AND business_id = ?', inv.id, bizId);
+  if (Number(retCount.c) > 0) return res.status(400).json({ error: 'has_returns' });
+  const items = await db.all('SELECT * FROM invoice_items WHERE invoice_id = ? AND business_id = ?', inv.id, bizId);
+  const tx = await db.begin();
+  try {
+    for (const it of items) {
+      if (!it.product_id) continue;
+      await tx.run(
+        `INSERT INTO stock_movements (business_id, product_id, type, qty_change, ref_id)
+         VALUES (?, ?, 'adjustment', ?, ?)`
+      , bizId, it.product_id, Number(it.qty), inv.id);
+      await tx.run('UPDATE products SET stock_qty = stock_qty + ? WHERE id = ? AND business_id = ?', Number(it.qty), it.product_id, bizId);
+    }
+    await tx.run('DELETE FROM customer_payments WHERE invoice_id = ? AND business_id = ?', inv.id, bizId);
+    await tx.run(
+      `UPDATE invoices SET cancelled_at = datetime('now'), cancel_reason = ?, paid_amount = 0, payment_mode = NULL,
+         updated_at = datetime('now'), sync_status = 'local' WHERE id = ? AND business_id = ?`
+    , reason, inv.id, bizId);
+    await tx.commit();
+  } catch (e) {
+    await tx.rollback();
+    return res.status(500).json({ error: 'could not cancel bill' });
+  }
+  await auditLog(req, 'cancel', 'invoice', inv.id, `Bill #${inv.bill_no} CANCEL hua — wajah: ${reason}`);
+  queueSync();
+  res.json({ invoice: publicInvoice(await getOwnedInvoice(bizId, inv.id)) });
+});
+
+app.put('/api/invoices/:id', requireAuth, requireOwner, async (req, res) => {
+  const bizId = req.user.business_id;
+  const inv = await getOwnedInvoice(bizId, req.params.id);
+  if (!inv) return res.status(404).json({ error: 'invoice not found' });
+  if (inv.cancelled_at) return res.status(400).json({ error: 'invoice_cancelled' });
+  if ((inv.kind || 'sale') !== 'sale') return res.status(400).json({ error: 'only_sale_bills_editable' });
+  const retCount = await db.get('SELECT COUNT(*) AS c FROM returns WHERE invoice_id = ? AND business_id = ?', inv.id, bizId);
+  if (Number(retCount.c) > 0) return res.status(400).json({ error: 'has_returns' });
+  const b = req.body || {};
+  if (!Array.isArray(b.items) || b.items.length === 0) {
+    return res.status(400).json({ error: 'at least one item is required' });
+  }
+  // Price the new lines EXACTLY like a fresh bill (same priceLines path
+  // as createSaleInvoice / estimates).
+  const rawLines = [];
+  for (const it of b.items) {
+    if (!it || !it.product_id) return res.status(400).json({ error: 'each item needs a product_id' });
+    const prod = await getOwnedProduct(bizId, it.product_id);
+    if (!prod) return res.status(404).json({ error: 'product not found' });
+    if (!validNum(it.qty) || Number(it.qty) <= 0) return res.status(400).json({ error: 'qty must be greater than 0' });
+    const price = it.price !== undefined ? it.price : (it.sell_price !== undefined ? it.sell_price : prod.sell_price);
+    if (!validNum(price) || Number(price) < 0) return res.status(400).json({ error: 'sell_price must be a number >= 0' });
+    rawLines.push({ prod, qty: Number(it.qty), sell_price: Number(price) });
+  }
+  const biz = await getBusiness(bizId);
+  const gstOn = !!(biz && biz.gst_enabled);
+  const { lines, subtotal, gstAmount } = priceLines(gstOn, rawLines);
+  const discount = b.discount === undefined || b.discount === null || b.discount === '' ? 0 : Number(b.discount);
+  if (!Number.isFinite(discount) || discount < 0 || round2(discount) > subtotal) {
+    return res.status(400).json({ error: 'discount must be between 0 and the subtotal' });
+  }
+  const total = round2(subtotal - discount);
+  const newPaid = b.paid_amount === undefined || b.paid_amount === null || b.paid_amount === ''
+    ? Number(inv.paid_amount) : Number(b.paid_amount);
+  if (!Number.isFinite(newPaid) || newPaid < 0 || round2(newPaid) > total) {
+    return res.status(400).json({ error: 'paid_amount must be between 0 and the bill total' });
+  }
+  const modes = ['Cash', 'UPI', 'Bank'];
+  const newMode = modes.includes(b.payment_mode) ? b.payment_mode : (inv.payment_mode || 'Cash');
+  // Customer: keep, change or clear (walk-in). Same rule as create.
+  let customerId = inv.customer_id || null;
+  let customerName = inv.customer_name || 'Walk-in Customer';
+  if (b.customer_id !== undefined) {
+    if (b.customer_id) {
+      const cust = await db.get('SELECT * FROM customers WHERE id = ? AND business_id = ?', b.customer_id, bizId);
+      if (!cust) return res.status(400).json({ error: 'customer not found' });
+      customerId = cust.id; customerName = cust.name;
+    } else { customerId = null; customerName = 'Walk-in Customer'; }
+  }
+  const oldItems = await db.all('SELECT * FROM invoice_items WHERE invoice_id = ? AND business_id = ?', inv.id, bizId);
+  const oldPaid = Number(inv.paid_amount);
+  const qtyByProduct = new Map();
+  lines.forEach((l) => qtyByProduct.set(l.prod.id, (qtyByProduct.get(l.prod.id) || 0) + l.qty));
+  const tx = await db.begin();
+  try {
+    // 1) Reverse the old bill's stock (movements pattern: 'adjustment').
+    for (const it of oldItems) {
+      if (!it.product_id) continue;
+      await tx.run(
+        `INSERT INTO stock_movements (business_id, product_id, type, qty_change, ref_id)
+         VALUES (?, ?, 'adjustment', ?, ?)`
+      , bizId, it.product_id, Number(it.qty), inv.id);
+      await tx.run('UPDATE products SET stock_qty = stock_qty + ? WHERE id = ? AND business_id = ?', Number(it.qty), it.product_id, bizId);
+    }
+    await tx.run('DELETE FROM invoice_items WHERE invoice_id = ? AND business_id = ?', inv.id, bizId);
+    // 2) Stock check against the RESTORED stock (aggregated per product,
+    //    same as createSaleInvoice) — reject the whole edit, change nothing.
+    for (const [pid, need] of qtyByProduct) {
+      const prod = await tx.get('SELECT * FROM products WHERE id = ? AND business_id = ?', pid, bizId);
+      if (!prod || Number(prod.stock_qty) < need) {
+        await tx.rollback();
+        return res.status(400).json({ error: 'insufficient_stock', product: prod ? prod.name : '' });
+      }
+    }
+    // 3) Apply the new lines.
+    const insItemSql =
+      `INSERT INTO invoice_items (business_id, invoice_id, product_id, product_name, qty, sell_price, buy_price, gst_rate, amount)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    for (const l of lines) {
+      await tx.run(insItemSql, bizId, inv.id, l.prod.id, l.prod.name, l.qty, l.sell_price, Number(l.prod.buy_price), l.gst_rate, l.amount);
+      await tx.run('UPDATE products SET stock_qty = stock_qty - ? WHERE id = ? AND business_id = ?', l.qty, l.prod.id, bizId);
+      await tx.run(
+        `INSERT INTO stock_movements (business_id, product_id, type, qty_change, ref_id) VALUES (?, ?, 'sale', ?, ?)`
+      , bizId, l.prod.id, -l.qty, inv.id);
+    }
+    // 4) Payments: adjust by the difference so customer_payments stays
+    //    the single source for collections / day-end / hisab.
+    const diff = round2(newPaid - oldPaid);
+    if (diff > 0) {
+      await tx.run(
+        `INSERT INTO customer_payments (business_id, invoice_id, amount, mode, date) VALUES (?, ?, ?, ?, ?)`
+      , bizId, inv.id, diff, newMode, inv.date);
+    } else if (diff < 0) {
+      let remaining = -diff;
+      const pays = await tx.all(
+        'SELECT * FROM customer_payments WHERE invoice_id = ? AND business_id = ? ORDER BY id DESC', inv.id, bizId);
+      for (const p of pays) {
+        if (remaining <= 0) break;
+        const cut = Math.min(remaining, Number(p.amount));
+        if (round2(Number(p.amount) - cut) <= 0) {
+          await tx.run('DELETE FROM customer_payments WHERE id = ? AND business_id = ?', p.id, bizId);
+        } else {
+          await tx.run('UPDATE customer_payments SET amount = ? WHERE id = ? AND business_id = ?', round2(Number(p.amount) - cut), p.id, bizId);
+        }
+        remaining = round2(remaining - cut);
+      }
+    }
+    // Due date: fully paid → none; balance hai aur pehle set nahi tha →
+    // bill date + 15 din (create wali rule); warna purani hi rehti hai.
+    let dueDate = inv.due_date || null;
+    if (round2(total - newPaid) <= 0) dueDate = null;
+    else if (!dueDate) dueDate = addDaysToDateStr(inv.date, 15);
+    await tx.run(
+      `UPDATE invoices SET customer_id = ?, customer_name = ?, subtotal = ?, discount = ?, gst_enabled = ?,
+         gst_amount = ?, total = ?, paid_amount = ?, payment_mode = ?, due_date = ?,
+         updated_at = datetime('now'), sync_status = 'local' WHERE id = ? AND business_id = ?`
+    , customerId, customerName, subtotal, round2(discount), gstOn ? 1 : 0, gstAmount, total,
+      round2(newPaid), newPaid > 0 ? newMode : null, dueDate, inv.id, bizId);
+    await tx.commit();
+  } catch (e) {
+    try { await tx.rollback(); } catch (_) {}
+    return res.status(500).json({ error: 'could not edit bill' });
+  }
+  await auditLog(req, 'update', 'invoice', inv.id,
+    `Bill #${inv.bill_no} EDIT hua — naya total ${fmtAuditAmt(total)} (purana ${fmtAuditAmt(Number(inv.total))})`);
+  queueSync();
+  res.json({ invoice: publicInvoice(await getOwnedInvoice(bizId, inv.id)) });
 });
 
 // =====================================================================
@@ -2742,6 +2979,7 @@ app.post('/api/invoices/:id/returns', requireAuth, requireBillingAccess, async (
   const bizId = req.user.business_id;
   const inv = await getOwnedInvoice(bizId, req.params.id);
   if (!inv) return res.status(404).json({ error: 'invoice not found' });
+  if (inv.cancelled_at) return res.status(400).json({ error: 'invoice_cancelled' });
   const b = req.body || {};
   if (!Array.isArray(b.items) || b.items.length === 0) return res.status(400).json({ error: 'at least one item is required' });
 
@@ -2928,6 +3166,64 @@ function bucketDueRows(rows, todayStr) {
   return { overdue, due_today: dueToday, due_soon: dueSoon };
 }
 
+// ---------- One-tap vasuli (customer-level payment from alerts) -----
+// Records money received from a customer and allocates it FIFO (oldest
+// bill first) across that customer's bills with NET pending > 0 — net
+// of any sales returns on the bill, cancelled bills skipped. Amount
+// omitted = the customer's full net pending. One customer_payments row
+// per touched bill, so day-end / hisab / reports stay exact. Same
+// permission as recording a payment on a single bill.
+app.post('/api/customers/:id/vasuli', requireAuth, requireBillingAccess, async (req, res) => {
+  const bizId = req.user.business_id;
+  const cust = await db.get('SELECT * FROM customers WHERE id = ? AND business_id = ?', req.params.id, bizId);
+  if (!cust) return res.status(404).json({ error: 'customer not found' });
+  const full = await customerRow(bizId, cust.id);
+  const netPending = round2(Number(full.total_billed || 0) - Number(full.total_received || 0) - Number(full.total_returns || 0));
+  const b = req.body || {};
+  let amount = (b.amount === undefined || b.amount === null || b.amount === '') ? netPending : Number(b.amount);
+  if (!validNum(amount) || amount <= 0) return res.status(400).json({ error: 'amount must be greater than 0' });
+  amount = round2(amount);
+  if (amount > netPending) return res.status(400).json({ error: 'amount_more_than_pending' });
+  const modes = ['Cash', 'UPI', 'Bank'];
+  const mode = modes.includes(b.mode) ? b.mode : 'Cash';
+  const date = b.date ? String(b.date).trim() : new Date().toISOString().slice(0, 10);
+  const bills = await db.all(
+    `SELECT i.*, COALESCE((SELECT SUM(r.total_amount) FROM returns r WHERE r.invoice_id = i.id AND r.business_id = i.business_id), 0) AS returns_total
+     FROM invoices i
+     WHERE i.business_id = ? AND i.customer_id = ? AND i.cancelled_at IS NULL AND i.paid_amount < i.total
+     ORDER BY i.id ASC`
+  , bizId, cust.id);
+  const tx = await db.begin();
+  try {
+    let remaining = amount;
+    const allocations = [];
+    for (const inv of bills) {
+      if (remaining <= 0) break;
+      const due = round2(Number(inv.total) - Number(inv.returns_total) - Number(inv.paid_amount));
+      if (due <= 0) continue;
+      const take = Math.min(due, remaining);
+      await tx.run(
+        `INSERT INTO customer_payments (business_id, invoice_id, amount, mode, date) VALUES (?, ?, ?, ?, ?)`
+      , bizId, inv.id, take, mode, date);
+      await tx.run(
+        `UPDATE invoices SET paid_amount = paid_amount + ?, updated_at = datetime('now'), sync_status = 'local' WHERE id = ? AND business_id = ?`
+      , take, inv.id, bizId);
+      allocations.push({ invoice_id: inv.id, bill_no: inv.bill_no, amount: take });
+      remaining = round2(remaining - take);
+    }
+    if (remaining > 0) { await tx.rollback(); return res.status(400).json({ error: 'amount_more_than_pending' }); }
+    await tx.commit();
+    await auditLog(req, 'create', 'customer_payment', cust.id,
+      `${cust.name} se vasuli: ${fmtAuditAmt(amount)} (${allocations.length} bill me bantaa)`);
+    queueSync();
+    const after = await customerRow(bizId, cust.id);
+    return res.status(201).json({ received: amount, allocations, customer: publicCustomer(after) });
+  } catch (e) {
+    try { await tx.rollback(); } catch (_) {}
+    return res.status(500).json({ error: 'could not record vasuli' });
+  }
+});
+
 app.get('/api/alerts', requireAuth, requireBillingAccess, async (req, res) => {
   const bizId = req.user.business_id;
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -2936,7 +3232,7 @@ app.get('/api/alerts', requireAuth, requireBillingAccess, async (req, res) => {
        COALESCE(SUM(i.total - i.paid_amount), 0) AS amount,
        MIN(i.due_date) AS oldest_due_date, COUNT(*) AS bill_count
      FROM invoices i JOIN customers c ON c.id = i.customer_id AND c.business_id = i.business_id
-     WHERE i.business_id = ? AND i.customer_id IS NOT NULL AND i.due_date IS NOT NULL
+     WHERE i.business_id = ? AND i.customer_id IS NOT NULL AND i.due_date IS NOT NULL AND i.cancelled_at IS NULL
        AND i.paid_amount < i.total AND i.kind IN ('sale', 'opening')
      GROUP BY i.customer_id, c.name, c.phone`
   , bizId);
@@ -2977,6 +3273,7 @@ app.get('/api/invoices/:id/whatsapp-link', requireAuth, requireBillingAccess, as
   const bizId = req.user.business_id;
   const inv = await getOwnedInvoice(bizId, req.params.id);
   if (!inv) return res.status(404).json({ error: 'invoice not found' });
+  if (inv.cancelled_at) return res.status(400).json({ error: 'invoice_cancelled' });
 
   // Recipient: ?phone= override wins, else the invoice customer's stored phone.
   let rawPhone = req.query.phone !== undefined ? String(req.query.phone) : null;
@@ -3212,12 +3509,12 @@ async function financeSummary(bizId, from, to) {
   // (kind='opening', no items) are udhaar, never sales/COGS.
   const sale = await db.get(
     `SELECT COALESCE(SUM(total),0) AS s, COUNT(*) AS c FROM invoices
-     WHERE business_id = ? AND date >= ? AND date <= ? AND kind = 'sale'`
+     WHERE business_id = ? AND date >= ? AND date <= ? AND kind = 'sale' AND cancelled_at IS NULL`
   , bizId, from, to);
   const cogsRow = await db.get(
     `SELECT COALESCE(SUM(ii.qty * ii.buy_price),0) AS s FROM invoice_items ii
      JOIN invoices i ON i.id = ii.invoice_id AND i.business_id = ii.business_id
-     WHERE i.business_id = ? AND i.date >= ? AND i.date <= ? AND i.kind = 'sale'`
+     WHERE i.business_id = ? AND i.date >= ? AND i.date <= ? AND i.kind = 'sale' AND i.cancelled_at IS NULL`
   , bizId, from, to);
   // Feature 2: returns net out by their RETURN date (credit-note month
   // rule) — sale drops by the returned value, COGS drops by the returned
@@ -3253,7 +3550,7 @@ async function pendingTotals(bizId) {
   // and the returns total is subtracted. Identical result when there
   // are no returns (paid_amount never exceeds total on any invoice).
   const c = await db.get(
-    `SELECT COALESCE(SUM(total - paid_amount),0) AS s FROM invoices WHERE business_id = ?`
+    `SELECT COALESCE(SUM(total - paid_amount),0) AS s FROM invoices WHERE business_id = ? AND cancelled_at IS NULL`
   , bizId);
   const rt = await db.get(
     `SELECT COALESCE(SUM(total_amount),0) AS s FROM returns WHERE business_id = ?`
@@ -3291,7 +3588,7 @@ app.get('/api/reports/daily-sales', requireAuth, requireOwner, async (req, res) 
   if (days > 366) return res.status(400).json({ error: 'range too large (max 366 days)' });
   const rows = await db.all(
     `SELECT date, COALESCE(SUM(total),0) AS t, COUNT(*) AS c FROM invoices
-     WHERE business_id = ? AND date >= ? AND date <= ? AND kind = 'sale' GROUP BY date`
+     WHERE business_id = ? AND date >= ? AND date <= ? AND kind = 'sale' AND cancelled_at IS NULL GROUP BY date`
   , req.user.business_id, range.from, range.to);
   const map = {};
   rows.forEach((r) => { map[r.date] = { total: round2(r.t), bills: r.c }; });
@@ -3324,7 +3621,7 @@ app.get('/api/reports/pending', requireAuth, requireOwner, async (req, res) => {
     `SELECT c.id AS id, c.name AS name, c.phone AS phone,
        COALESCE(SUM(i.total - i.paid_amount), 0) - COALESCE(rt.total_returns, 0) AS pending
      FROM customers c
-     LEFT JOIN invoices i ON i.customer_id = c.id AND i.business_id = c.business_id
+     LEFT JOIN invoices i ON i.customer_id = c.id AND i.business_id = c.business_id AND i.cancelled_at IS NULL
      LEFT JOIN (SELECT customer_id, SUM(total_amount) AS total_returns FROM returns
                 WHERE business_id = ? GROUP BY customer_id) rt ON rt.customer_id = c.id
      WHERE c.business_id = ?
@@ -3399,14 +3696,14 @@ app.get('/api/reports/gst', requireAuth, requireOwner, async (req, res) => {
   const tot = await db.get(
     `SELECT COALESCE(SUM(total),0) AS sales, COALESCE(SUM(subtotal),0) AS sub,
        COALESCE(SUM(discount),0) AS disc, COALESCE(SUM(gst_amount),0) AS gst, COUNT(*) AS c
-     FROM invoices WHERE business_id = ? AND date >= ? AND date <= ? AND gst_enabled = 1 AND kind = 'sale'`
+     FROM invoices WHERE business_id = ? AND date >= ? AND date <= ? AND gst_enabled = 1 AND kind = 'sale' AND cancelled_at IS NULL`
   , bizId, range.from, range.to);
   const outputGst = round2(tot.gst);
   // Rate-wise breakup from invoice_items, same inclusive formula per rate.
   const rateRows = await db.all(
     `SELECT ii.gst_rate AS rate, COALESCE(SUM(ii.amount),0) AS amt
      FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id AND i.business_id = ii.business_id
-     WHERE i.business_id = ? AND i.date >= ? AND i.date <= ? AND i.gst_enabled = 1
+     WHERE i.business_id = ? AND i.date >= ? AND i.date <= ? AND i.gst_enabled = 1 AND i.cancelled_at IS NULL
      GROUP BY ii.gst_rate ORDER BY ii.gst_rate ASC`
   , bizId, range.from, range.to);
   const byRate = rateRows.map((r) => {
@@ -3612,13 +3909,13 @@ async function buildGstr1(bizId, range) {
   const tot = await db.get(
     `SELECT COALESCE(SUM(total),0) AS sales, COALESCE(SUM(subtotal),0) AS sub,
        COALESCE(SUM(discount),0) AS disc, COALESCE(SUM(gst_amount),0) AS gst, COUNT(*) AS c
-     FROM invoices WHERE business_id = ? AND date >= ? AND date <= ? AND gst_enabled = 1 AND kind = 'sale'`
+     FROM invoices WHERE business_id = ? AND date >= ? AND date <= ? AND gst_enabled = 1 AND kind = 'sale' AND cancelled_at IS NULL`
   , bizId, range.from, range.to);
   const outputGst = round2(tot.gst);
   const rateRows = await db.all(
     `SELECT ii.gst_rate AS rate, COALESCE(SUM(ii.amount),0) AS amt
      FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id AND i.business_id = ii.business_id
-     WHERE i.business_id = ? AND i.date >= ? AND i.date <= ? AND i.gst_enabled = 1
+     WHERE i.business_id = ? AND i.date >= ? AND i.date <= ? AND i.gst_enabled = 1 AND i.cancelled_at IS NULL
      GROUP BY ii.gst_rate ORDER BY ii.gst_rate ASC`
   , bizId, range.from, range.to);
   const byRate = rateRows.map((r) => {
@@ -3640,7 +3937,7 @@ async function buildGstr1(bizId, range) {
   const invRows = await db.all(
     `SELECT i.*, c.gstin AS cust_gstin
      FROM invoices i LEFT JOIN customers c ON c.id = i.customer_id AND c.business_id = i.business_id
-     WHERE i.business_id = ? AND i.date >= ? AND i.date <= ? AND i.gst_enabled = 1
+     WHERE i.business_id = ? AND i.date >= ? AND i.date <= ? AND i.gst_enabled = 1 AND i.cancelled_at IS NULL
      ORDER BY i.id ASC`
   , bizId, range.from, range.to);
   const itemRows = await db.all(
@@ -3648,7 +3945,7 @@ async function buildGstr1(bizId, range) {
      FROM invoice_items ii
      JOIN invoices i ON i.id = ii.invoice_id AND i.business_id = ii.business_id
      LEFT JOIN products p ON p.id = ii.product_id AND p.business_id = ii.business_id
-     WHERE i.business_id = ? AND i.date >= ? AND i.date <= ? AND i.gst_enabled = 1
+     WHERE i.business_id = ? AND i.date >= ? AND i.date <= ? AND i.gst_enabled = 1 AND i.cancelled_at IS NULL
      ORDER BY ii.invoice_id ASC, ii.id ASC`
   , bizId, range.from, range.to);
   const itemsByInv = new Map();
@@ -3957,7 +4254,7 @@ app.get('/api/search', requireAuth, async (req, res) => {
   if (canBilling) {
     const crows = await db.all(
       `SELECT c.*, COALESCE(SUM(i.total),0) AS total_billed, COALESCE(SUM(i.paid_amount),0) AS total_received
-       FROM customers c LEFT JOIN invoices i ON i.customer_id = c.id AND i.business_id = c.business_id
+       FROM customers c LEFT JOIN invoices i ON i.customer_id = c.id AND i.business_id = c.business_id AND i.cancelled_at IS NULL
        WHERE c.business_id = ? AND (c.name LIKE ? OR c.phone LIKE ?) GROUP BY c.id ORDER BY c.name ASC LIMIT 8`
     , bizId, like, like);
     out.customers = crows.map(publicCustomer);
@@ -3996,7 +4293,7 @@ app.get('/api/dashboard-summary', requireAuth, async (req, res) => {
   const bizId = req.user.business_id;
   const today = new Date().toISOString().slice(0, 10);
   const t = await db.get(
-    `SELECT COALESCE(SUM(total),0) AS sale, COUNT(*) AS bills FROM invoices WHERE business_id = ? AND date = ? AND kind = 'sale'`
+    `SELECT COALESCE(SUM(total),0) AS sale, COUNT(*) AS bills FROM invoices WHERE business_id = ? AND date = ? AND kind = 'sale' AND cancelled_at IS NULL`
   , bizId, today);
   // Feature 2: every sale/pending figure here is NET of returns — today's
   // sale minus today's returns (by return date), pending minus all
@@ -4006,7 +4303,7 @@ app.get('/api/dashboard-summary', requireAuth, async (req, res) => {
   , bizId, today);
   const balRows = await db.all(
     `SELECT customer_id, customer_name, COALESCE(SUM(total - paid_amount),0) AS bal
-     FROM invoices WHERE business_id = ? GROUP BY customer_id, customer_name`
+     FROM invoices WHERE business_id = ? AND cancelled_at IS NULL GROUP BY customer_id, customer_name`
   , bizId);
   const retRows = await db.all(
     `SELECT customer_id, COALESCE(SUM(total_amount),0) AS s FROM returns
@@ -4029,7 +4326,7 @@ app.get('/api/dashboard-summary', requireAuth, async (req, res) => {
   for (let i = 6; i >= 0; i--) weekDays.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10));
   const wRows = await db.all(
     `SELECT date, COALESCE(SUM(total),0) AS t FROM invoices
-     WHERE business_id = ? AND date >= ? AND date <= ? AND kind = 'sale' GROUP BY date`
+     WHERE business_id = ? AND date >= ? AND date <= ? AND kind = 'sale' AND cancelled_at IS NULL GROUP BY date`
   , bizId, weekDays[0], today);
   const wRetRows = await db.all(
     `SELECT date, COALESCE(SUM(total_amount),0) AS t FROM returns
@@ -4063,7 +4360,7 @@ app.get('/api/dashboard-summary', requireAuth, async (req, res) => {
 async function dayEndReport(bizId, date) {
   const salesRow = await db.get(
     `SELECT COALESCE(SUM(total),0) AS s, COUNT(*) AS c FROM invoices
-     WHERE business_id = ? AND date = ? AND kind = 'sale'`
+     WHERE business_id = ? AND date = ? AND kind = 'sale' AND cancelled_at IS NULL`
   , bizId, date);
   const retRow = await db.get(
     `SELECT COALESCE(SUM(total_amount),0) AS s, COUNT(*) AS c FROM returns
@@ -4088,7 +4385,7 @@ async function dayEndReport(bizId, date) {
   const onToday = await db.get(
     `SELECT COALESCE(SUM(cp.amount),0) AS s FROM customer_payments cp
      JOIN invoices i ON i.id = cp.invoice_id AND i.business_id = cp.business_id
-     WHERE cp.business_id = ? AND cp.date = ? AND i.date = ? AND i.kind = 'sale'`
+     WHERE cp.business_id = ? AND cp.date = ? AND i.date = ? AND i.kind = 'sale' AND i.cancelled_at IS NULL`
   , bizId, date, date);
   const expRow = await db.get(
     `SELECT COALESCE(SUM(amount),0) AS s, COUNT(*) AS c FROM expenses
@@ -4118,6 +4415,95 @@ async function dayEndReport(bizId, date) {
     supplier_payments: { total: round2(supRow.s), count: Number(supRow.c) }
   };
 }
+
+// ---------- Monthly Business Report Card (owner-only) ----------
+// All headline figures come from financeSummary() — the SAME math the
+// monthly report uses (Net = Sale − COGS − Expenses, returns netted).
+// Stock value is the CURRENT stock value (historical month-end stock
+// is not reconstructed) and is labelled as such in the response.
+const RC_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+async function buildReportCard(bizId, range) {
+  const { from, to } = range;
+  const fin = await financeSummary(bizId, from, to);
+  const retRow = await db.get(
+    `SELECT COALESCE(SUM(total_amount),0) AS s FROM returns
+     WHERE business_id = ? AND date >= ? AND date <= ?`
+  , bizId, from, to);
+  const topProducts = await db.all(
+    `SELECT ii.product_name AS name, COALESCE(SUM(ii.qty),0) AS qty, COALESCE(SUM(ii.amount),0) AS amount
+     FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id AND i.business_id = ii.business_id
+     WHERE ii.business_id = ? AND i.date >= ? AND i.date <= ? AND i.kind = 'sale' AND i.cancelled_at IS NULL
+     GROUP BY ii.product_name ORDER BY amount DESC LIMIT 3`
+  , bizId, from, to);
+  const pend = await pendingTotals(bizId);
+  const topPending = await db.all(
+    `SELECT c.name AS name, COALESCE(SUM(i.total),0) - COALESCE(SUM(i.paid_amount),0)
+       - COALESCE((SELECT SUM(r.total_amount) FROM returns r WHERE r.customer_id = c.id AND r.business_id = c.business_id), 0) AS pending
+     FROM customers c JOIN invoices i ON i.customer_id = c.id AND i.business_id = c.business_id AND i.cancelled_at IS NULL
+     WHERE c.business_id = ? GROUP BY c.id, c.name HAVING pending > 0 ORDER BY pending DESC LIMIT 3`
+  , bizId);
+  const stockRow = await db.get(
+    'SELECT COALESCE(SUM(stock_qty * buy_price),0) AS v FROM products WHERE business_id = ?', bizId);
+  // Udhaar diya = this month's bills still unpaid (their total − what
+  // was paid against them); Vasuli = ALL customer payments actually
+  // received in the month (any bill). Both labelled plainly in the UI.
+  const diyaRow = await db.get(
+    `SELECT COALESCE(SUM(total - paid_amount),0) AS v FROM invoices
+     WHERE business_id = ? AND date >= ? AND date <= ? AND kind = 'sale' AND cancelled_at IS NULL`
+  , bizId, from, to);
+  const vasuliRow = await db.get(
+    `SELECT COALESCE(SUM(amount),0) AS v FROM customer_payments
+     WHERE business_id = ? AND date >= ? AND date <= ?`
+  , bizId, from, to);
+  return {
+    month: range.month, from, to,
+    sale: fin.sale_total, cogs: fin.cogs, expenses: fin.expenses_total, net: fin.net_profit,
+    bills_count: fin.bills_count, returns_total: round2(Number(retRow.s)),
+    top_products: topProducts.map((r) => ({ name: r.name, qty: Number(r.qty), amount: round2(Number(r.amount)) })),
+    top_pending_customers: topPending.map((r) => ({ name: r.name, pending: round2(Number(r.pending)) })),
+    total_pending: pend.pending_collection,
+    stock_value: round2(Number(stockRow.v)), stock_value_label: 'aaj ka stock value',
+    udhaar_diya: round2(Number(diyaRow.v)),
+    vasuli: round2(Number(vasuliRow.v))
+  };
+}
+
+app.get('/api/reports/report-card', requireAuth, requireOwner, async (req, res) => {
+  const range = monthFromQuery(req);
+  if (!range) return res.status(400).json({ error: 'month must be YYYY-MM' });
+  res.json({ report_card: await buildReportCard(req.user.business_id, range) });
+});
+
+// WhatsApp-ready summary of the Report Card — same wa.me pattern as
+// the day-end link: goes to the SHOP's OWN number, manual send only.
+app.get('/api/reports/report-card/whatsapp-link', requireAuth, requireOwner, async (req, res) => {
+  const bizId = req.user.business_id;
+  const range = monthFromQuery(req);
+  if (!range) return res.status(400).json({ error: 'month must be YYYY-MM' });
+  const biz = await db.get('SELECT * FROM businesses WHERE id = ?', bizId);
+  const phone = normalizePhone(biz && biz.phone);
+  if (!phone) return res.status(400).json({ error: 'no_business_phone' });
+  const rc = await buildReportCard(bizId, range);
+  const mp = range.month.split('-').map(Number);
+  const monthName = RC_MONTH_NAMES[mp[1] - 1] + ' ' + mp[0];
+  const lines = [
+    `*${biz.name} — Report Card*`,
+    `Mahina: ${monthName}`,
+    '',
+    `Kul Sale: ${msgAmt(rc.sale)} (${rc.bills_count} bill)`,
+    `Kharcha (maal + kharche): ${msgAmt(round2(rc.cogs + rc.expenses))}`,
+    `*Munafa (Net): ${msgAmt(rc.net)}*`,
+    `Abhi kul udhaar baaki: ${msgAmt(rc.total_pending)}`,
+    `Stock value (aaj ka): ${msgAmt(rc.stock_value)}`
+  ];
+  if (rc.top_products.length) {
+    lines.push('', '*Sabse zyada bike:*');
+    rc.top_products.forEach((tp, i) => lines.push(`${i + 1}. ${tp.name} — ${msgAmt(tp.amount)}`));
+  }
+  const message = lines.join('\n');
+  res.json({ phone, url: `https://wa.me/${phone}?text=${encodeURIComponent(message)}`, message });
+});
 
 app.get('/api/reports/day-end', requireAuth, requireOwner, async (req, res) => {
   const date = req.query.date ? String(req.query.date).trim() : new Date().toISOString().slice(0, 10);
@@ -4320,7 +4706,7 @@ const RESTORE_COLUMNS = {
   purchases: ['id', 'business_id', 'supplier_id', 'bill_no', 'date', 'total', 'paid_amount', 'due_date', 'kind', 'created_at', 'updated_at', 'sync_status'],
   purchase_items: ['id', 'business_id', 'purchase_id', 'product_id', 'qty', 'buy_price', 'amount', 'created_at', 'updated_at', 'sync_status'],
   supplier_payments: ['id', 'business_id', 'purchase_id', 'amount', 'mode', 'date', 'created_at', 'updated_at', 'sync_status'],
-  invoices: ['id', 'business_id', 'bill_no', 'customer_id', 'customer_name', 'date', 'subtotal', 'discount', 'gst_enabled', 'gst_amount', 'total', 'paid_amount', 'payment_mode', 'due_date', 'kind', 'created_at', 'updated_at', 'sync_status'],
+  invoices: ['id', 'business_id', 'bill_no', 'customer_id', 'customer_name', 'date', 'subtotal', 'discount', 'gst_enabled', 'gst_amount', 'total', 'paid_amount', 'payment_mode', 'due_date', 'kind', 'cancelled_at', 'cancel_reason', 'created_at', 'updated_at', 'sync_status'],
   invoice_items: ['id', 'business_id', 'invoice_id', 'product_id', 'product_name', 'qty', 'sell_price', 'buy_price', 'gst_rate', 'amount', 'created_at', 'updated_at', 'sync_status'],
   customer_payments: ['id', 'business_id', 'invoice_id', 'amount', 'mode', 'date', 'created_at', 'updated_at', 'sync_status'],
   stock_movements: ['id', 'business_id', 'product_id', 'type', 'qty_change', 'ref_id', 'created_at', 'updated_at', 'sync_status'],
@@ -4442,7 +4828,7 @@ app.get('/api/export/products', requireAuth, requireStockAccess, async (req, res
 app.get('/api/export/customers', requireAuth, requireBillingAccess, async (req, res) => {
   const rows = await db.all(
     `SELECT c.*, COALESCE(SUM(i.total),0) AS total_billed, COALESCE(SUM(i.paid_amount),0) AS total_received
-     FROM customers c LEFT JOIN invoices i ON i.customer_id = c.id AND i.business_id = c.business_id
+     FROM customers c LEFT JOIN invoices i ON i.customer_id = c.id AND i.business_id = c.business_id AND i.cancelled_at IS NULL
      WHERE c.business_id = ? GROUP BY c.id ORDER BY c.name ASC`
   , req.user.business_id);
   return sendCsv(res, `customers-${csvStamp()}.csv`,
@@ -4649,6 +5035,46 @@ async function analyzeImport(bizId, type, content) {
   if (typeof content !== 'string' || !content.trim()) return { error: 'empty_file' };
   const rows = parseDelimited(content);
   if (!rows.length) return { error: 'empty_file' };
+  return analyzeImportRows(bizId, type, rows);
+}
+
+// XLSX (Excel) import: the SAME pipeline as CSV/TSV — the workbook's
+// first sheet becomes the same row grid (row 1 = header), so column
+// mapping, validation, duplicate detection and row numbers (sheet row
+// numbers) are identical. The xlsx package is required lazily so a
+// missing install degrades to a clean error, never a boot crash; a
+// malformed workbook returns 'invalid_xlsx', never a 500.
+async function analyzeImportXlsx(bizId, type, base64) {
+  let XLSX;
+  try { XLSX = require('xlsx'); } catch (e) { return { error: 'xlsx_not_available' }; }
+  let wb;
+  try {
+    const buf = Buffer.from(String(base64 || ''), 'base64');
+    if (!buf.length) return { error: 'empty_file' };
+    // A real .xlsx is a ZIP archive ('PK\x03\x04'). SheetJS alone would
+    // happily parse a plain-text file as a one-column sheet, so check
+    // the signature first — a renamed text/CSV file gets a clean
+    // 'invalid_xlsx' instead of a confusing column error.
+    if (!(buf[0] === 0x50 && buf[1] === 0x4B)) return { error: 'invalid_xlsx' };
+    wb = XLSX.read(buf, { type: 'buffer' });
+  } catch (e) { return { error: 'invalid_xlsx' }; }
+  const sheetName = wb.SheetNames && wb.SheetNames[0];
+  if (!sheetName) return { error: 'empty_file' };
+  let rows;
+  try {
+    rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '', raw: true });
+  } catch (e) { return { error: 'invalid_xlsx' }; }
+  rows = (rows || []).map((r) => (r || []).map((c) => {
+    if (c === null || c === undefined) return '';
+    if (c instanceof Date) return c.toISOString().slice(0, 10);
+    return String(c);
+  }));
+  while (rows.length && rows[rows.length - 1].every((c) => String(c).trim() === '')) rows.pop();
+  if (!rows.length) return { error: 'empty_file' };
+  return analyzeImportRows(bizId, type, rows);
+}
+
+async function analyzeImportRows(bizId, type, rows) {
   const headers = rows[0].map((h) => String(h || '').trim());
   const syn = IMPORT_SYNONYMS[type];
   const colOf = {}, labelOf = {};
@@ -4686,7 +5112,10 @@ async function analyzeImport(bizId, type, content) {
 app.post('/api/import/:type/preview', requireAuth, requireOwner, async (req, res) => {
   const type = String(req.params.type || '');
   if (!IMPORT_TYPES.includes(type)) return res.status(404).json({ error: 'unknown_import_type' });
-  const a = await analyzeImport(req.user.business_id, type, (req.body || {}).content);
+  const body0 = req.body || {};
+  const a = body0.format === 'xlsx'
+    ? await analyzeImportXlsx(req.user.business_id, type, body0.content)
+    : await analyzeImport(req.user.business_id, type, body0.content);
   if (a.error) {
     return res.status(400).json({ error: a.error, headers: a.headers, limit: a.limit, rows_found: a.rows_found });
   }
@@ -4709,7 +5138,9 @@ app.post('/api/import/:type/commit', requireAuth, requireOwner, async (req, res)
   const bizId = req.user.business_id;
   const body = req.body || {};
   const strategy = body.duplicate === 'update' ? 'update' : 'skip';
-  const a = await analyzeImport(bizId, type, body.content);
+  const a = body.format === 'xlsx'
+    ? await analyzeImportXlsx(bizId, type, body.content)
+    : await analyzeImport(bizId, type, body.content);
   if (a.error) {
     return res.status(400).json({ error: a.error, headers: a.headers, limit: a.limit, rows_found: a.rows_found });
   }
@@ -4882,18 +5313,22 @@ app.get('/api/help', requireAuth, async (req, res) => {
 // assigned lazily. Synced field sets deliberately EXCLUDE products.stock_qty
 // (stock only ever travels as stock_movements; receivers recompute it) and
 // exclude every engine-local column (id, business_id, created_at).
-const SYNC_ORDER = ['suppliers', 'customers', 'products', 'expenses', 'purchases', 'purchase_items', 'supplier_payments', 'invoices', 'invoice_items', 'customer_payments', 'stock_movements'];
+const SYNC_ORDER = ['suppliers', 'customers', 'products', 'expenses', 'purchases', 'purchase_items', 'supplier_payments', 'invoices', 'invoice_items', 'customer_payments', 'estimates', 'estimate_items', 'returns', 'return_items', 'stock_movements'];
 const SYNC_FIELDS = {
   suppliers: ['name', 'phone', 'city'],
-  customers: ['name', 'phone', 'city'],
+  customers: ['name', 'phone', 'city', 'share_token'],
   products: ['name', 'category', 'unit', 'buy_price', 'sell_price', 'gst_rate', 'low_stock_limit'],
   expenses: ['title', 'category', 'amount', 'date', 'payment_mode', 'notes'],
   purchases: ['bill_no', 'date', 'total', 'paid_amount', 'kind', 'due_date'],
   purchase_items: ['qty', 'buy_price', 'amount'],
   supplier_payments: ['amount', 'mode', 'date'],
-  invoices: ['bill_no', 'customer_name', 'date', 'subtotal', 'discount', 'gst_enabled', 'gst_amount', 'total', 'paid_amount', 'payment_mode', 'kind', 'due_date'],
+  invoices: ['bill_no', 'customer_name', 'date', 'subtotal', 'discount', 'gst_enabled', 'gst_amount', 'total', 'paid_amount', 'payment_mode', 'kind', 'due_date', 'cancelled_at', 'cancel_reason'],
   invoice_items: ['product_name', 'qty', 'sell_price', 'buy_price', 'gst_rate', 'amount'],
   customer_payments: ['amount', 'mode', 'date'],
+  estimates: ['customer_name', 'estimate_no', 'date', 'subtotal', 'discount', 'gst_enabled', 'gst_amount', 'total', 'status', 'created_by'],
+  estimate_items: ['product_name', 'qty', 'sell_price', 'buy_price', 'gst_rate', 'hsn_code', 'amount'],
+  returns: ['return_no', 'date', 'total_amount', 'gst_amount', 'reason', 'created_by'],
+  return_items: ['qty', 'price', 'gst_rate'],
   stock_movements: ['type', 'qty_change']
 };
 const SYNC_FKS = {
@@ -4903,12 +5338,16 @@ const SYNC_FKS = {
   invoices: { customer_id: 'customers' },
   invoice_items: { invoice_id: 'invoices', product_id: 'products' },
   customer_payments: { invoice_id: 'invoices' },
+  estimates: { customer_id: 'customers' },
+  estimate_items: { estimate_id: 'estimates', product_id: 'products' },
+  returns: { invoice_id: 'invoices', customer_id: 'customers' },
+  return_items: { return_id: 'returns', invoice_item_id: 'invoice_items', product_id: 'products' },
   stock_movements: { product_id: 'products' }
 };
 const SYNC_MASTER_TABLES = new Set(['suppliers', 'customers', 'products', 'expenses']);
 // Append-only rows are never overwritten — except the payment-progress
 // column, which legitimately grows after the row first syncs.
-const SYNC_UPDATABLE = { invoices: ['paid_amount', 'due_date'], purchases: ['paid_amount', 'due_date'] };
+const SYNC_UPDATABLE = { invoices: ['paid_amount', 'due_date', 'cancelled_at', 'cancel_reason'], purchases: ['paid_amount', 'due_date'], estimates: ['status'] };
 const BUSINESS_SYNC_FIELDS = ['name', 'owner_name', 'phone', 'city', 'gst_enabled', 'gstin', 'language', 'upi_id', 'upi_payee_name'];
 
 async function getMeta(key) {
@@ -5056,6 +5495,16 @@ async function applyAppendRow(t, bizId, e, deviceId, res, affectedProducts) {
       const mx = await db.get('SELECT COALESCE(MAX(bill_no),0) AS m FROM invoices WHERE business_id = ?', bizId);
       fields.bill_no = Number(mx.m) + 1;
       res.bill_map.push({ uuid: e.uuid, bill_no: fields.bill_no });
+    }
+  }
+  // Same number-clash renumbering for estimate / return numbers (the
+  // local display number moves; the uuid identity never changes).
+  if (t === 'estimates' || t === 'returns') {
+    const col = t === 'estimates' ? 'estimate_no' : 'return_no';
+    const clash = await db.get(`SELECT id FROM ${t} WHERE business_id = ? AND ${col} = ?`, bizId, fields[col]);
+    if (clash) {
+      const mx = await db.get(`SELECT COALESCE(MAX(${col}),0) AS m FROM ${t} WHERE business_id = ?`, bizId);
+      fields[col] = Number(mx.m) + 1;
     }
   }
   const cols = [...SYNC_FIELDS[t], ...Object.keys(SYNC_FKS[t] || {})];

@@ -30,7 +30,7 @@ async function main() {
   }
   const sharmaUser = await db.get('SELECT business_id FROM users WHERE email = ?', 'demo@businessos.app');
   const hash = bcrypt.hashSync('demo1234', 10);
-  const trialEnd = fmtTs(new Date(Date.now() + 14 * 86400e3));
+  const trialEnd = fmtTs(new Date(Date.now() + 30 * 86400e3));
 
   const tx = await db.begin();
   try {

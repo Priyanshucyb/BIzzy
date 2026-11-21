@@ -62,6 +62,7 @@ const SCHEMA_SQL = `
     gstin TEXT NOT NULL DEFAULT '',
     upi_id TEXT NOT NULL DEFAULT '',
     upi_payee_name TEXT NOT NULL DEFAULT '',
+    payment_qr TEXT,
     language TEXT NOT NULL DEFAULT 'en',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -210,6 +211,8 @@ const SCHEMA_SQL = `
     payment_mode TEXT,
     due_date TEXT,
     kind TEXT NOT NULL DEFAULT 'sale',
+    cancelled_at TEXT,
+    cancel_reason TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     sync_status TEXT NOT NULL DEFAULT 'local'
@@ -909,6 +912,16 @@ async function init() {
     if (!userCols.includes('blocked')) sdb.exec("ALTER TABLE users ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0");
     if (!invCols.includes('due_date')) sdb.exec("ALTER TABLE invoices ADD COLUMN due_date TEXT");
     if (!purCols.includes('due_date')) sdb.exec("ALTER TABLE purchases ADD COLUMN due_date TEXT");
+    // Bill edit/cancel migration (same idempotent pattern): a cancelled
+    // bill keeps its row (History shows it with the reason) but leaves
+    // every total — cancelled_at/cancel_reason are nullable, existing
+    // bills stay NULL = active. Data untouched.
+    if (!invCols.includes('cancelled_at')) sdb.exec("ALTER TABLE invoices ADD COLUMN cancelled_at TEXT");
+    if (!invCols.includes('cancel_reason')) sdb.exec("ALTER TABLE invoices ADD COLUMN cancel_reason TEXT");
+    // Payment QR migration (same idempotent pattern): the shop's OWN
+    // uploaded UPI QR image (JPEG data URL) for the printed bill —
+    // nullable, older local DBs gain it as NULL (no QR on bills).
+    if (!bizCols.includes('payment_qr')) sdb.exec("ALTER TABLE businesses ADD COLUMN payment_qr TEXT");
     // Feature 2 migration: stock_movements gains the 'return' movement
     // type. A CHECK constraint cannot be ALTERed in SQLite, so an older
     // table is rebuilt in place (rows copied verbatim, index recreated).
@@ -989,6 +1002,13 @@ async function init() {
       await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked INTEGER NOT NULL DEFAULT 0");
       await client.query("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_date TEXT");
       await client.query("ALTER TABLE purchases ADD COLUMN IF NOT EXISTS due_date TEXT");
+      // Bill edit/cancel migration (same as the SQLite branch): nullable
+      // cancellation stamp + reason on invoices; existing bills stay NULL.
+      await client.query("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cancelled_at TEXT");
+      await client.query("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cancel_reason TEXT");
+      // Payment QR migration (same as the SQLite branch): the shop's own
+      // uploaded UPI QR image for the printed bill; NULL = no QR shown.
+      await client.query("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS payment_qr TEXT");
       // Feature 2 migration: widen the stock_movements type CHECK to
       // include 'return' (drop + re-add is a no-op outcome on fresh DBs,
       // whose DDL already carries the wider check).

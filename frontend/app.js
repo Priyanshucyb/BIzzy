@@ -70,6 +70,8 @@ function friendly(err) {
     'gateway_not_configured': ['Online card/UPI payment is not live yet — please pay by UPI and submit the claim below.', 'Online payment अभी live नहीं है — UPI से payment करके नीचे claim भेजो।', 'Online payment abhi live nahi hai — UPI se payment karke neeche claim bhejo.'],
     'plan_price_not_set': ['Plan price is not set yet.', 'Plan की price अभी set नहीं है।', 'Plan ki price abhi set nahi hai.'],
     'invalid_upi_id': ['That UPI ID does not look right — it should look like yourname@okhdfc.', 'UPI ID सही नहीं लग रहा — ऐसा होना चाहिए: yourname@okhdfc', 'UPI ID sahi nahi lag raha — aisa hona chahiye: yourname@okhdfc'],
+    'invalid_qr_image': ['That file is not a valid QR image — choose a JPG/PNG image.', 'Ye file sahi QR image nahi hai — JPG/PNG image chuno।', 'Ye file sahi QR image nahi hai — JPG/PNG image chuno.'],
+    'qr_image_too_large': ['The QR image is too big — use a smaller screenshot.', 'QR image bahut badi hai — chhota screenshot use karo।', 'QR image bahut badi hai — chhota screenshot use karo.'],
     'top_plan_required': ['This is a top-plan feature (E-Way Bill / E-Invoice file) — upgrade to unlock.', 'ये feature (E-Way Bill / E-Invoice file) सिर्फ़ top plan में है। Plan upgrade करने पर खुल जाएगा।', 'Ye feature (E-Way Bill / E-Invoice file) sirf top plan me hai. Plan upgrade karne par khul jayega.'],
     'gst_not_enabled': ['GST is OFF for this business — turn it on in Settings first.', 'इस business के लिए GST OFF है — पहले Settings में GST चालू करो।', 'Is business ke liye GST OFF hai — pehle Settings me GST on karo.'],
     'missing_fields': ['Some data is missing — check your GSTIN (Settings) and product HSN codes.', 'File बनाने के लिए कुछ data missing है — अपना GSTIN (Settings) और products के HSN code जाँचो।', 'File banane ke liye kuch data missing hai — apna GSTIN (Settings) aur products ke HSN code check karo.'],
@@ -583,10 +585,13 @@ function fillSettings() {
   $('setGstinWrap').classList.toggle('hidden', !b.gst_enabled);
   $('setUpiId').value = b.upi_id || '';
   $('setUpiName').value = b.upi_payee_name || '';
+  paymentQrState = { value: b.payment_qr || null, touched: false };
+  renderPaymentQrPreview();
   setLangSel = b.language || 'en';
   ['en', 'hi', 'hg'].forEach((l) => { const c = $('setLang' + l[0].toUpperCase() + l[1]); if (c) c.classList.toggle('sel', setLangSel === l); });
   const owner = me.user.role === 'owner';
   ['setName', 'setOwner', 'setPhone', 'setCity', 'setGst', 'setGstin', 'setUpiId', 'setUpiName'].forEach((id) => { $(id).disabled = !owner; });
+  $('setQrFile').disabled = !owner;
   $('setSaveBtn').disabled = !owner;
   $('staffReadonlyNote').classList.toggle('hidden', owner);
   $('staffCard').classList.toggle('hidden', !owner);
@@ -601,15 +606,51 @@ $('setGst').addEventListener('change', (e) => $('setGstinWrap').classList.toggle
   ['setLangEn', 'setLangHi', 'setLangHg'].forEach((x) => $(x).classList.toggle('sel', x === id));
 }));
 
+// Payment QR (printed bill): the shop's OWN uploaded UPI QR image,
+// handled exactly like the Mart listing photo — client canvas resize
+// to a JPEG data URL (~<=400KB), server validates. touched=false means
+// "leave the stored QR as it is" on save.
+let paymentQrState = { value: null, touched: false };
+function renderPaymentQrPreview() {
+  const img = $('setQrPrev');
+  if (paymentQrState.value) { img.src = paymentQrState.value; img.classList.remove('hidden'); }
+  else { img.removeAttribute('src'); img.classList.add('hidden'); }
+  $('setQrRemove').classList.toggle('hidden', !paymentQrState.value);
+}
+$('setQrFile').addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { showErr('setErr', tr("Please choose an image file.", "Image file chuno।")); e.target.value = ''; return; }
+  const img = new Image();
+  img.onload = () => {
+    const sc = Math.min(1, 900 / Math.max(img.width, img.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.round(img.width * sc)); cv.height = Math.max(1, Math.round(img.height * sc));
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    URL.revokeObjectURL(img.src);
+    paymentQrState = { value: cv.toDataURL('image/jpeg', 0.82), touched: true };
+    renderPaymentQrPreview();
+  };
+  img.onerror = () => { URL.revokeObjectURL(img.src); showErr('setErr', tr("That file could not be read as an image.", "Ye file image ki tarah nahi khuli।")); };
+  img.src = URL.createObjectURL(file);
+});
+$('setQrRemove').addEventListener('click', () => {
+  paymentQrState = { value: null, touched: true };
+  $('setQrFile').value = '';
+  renderPaymentQrPreview();
+});
+
 $('settingsForm').addEventListener('submit', async (e) => {
   e.preventDefault(); hideErr('setErr'); $('setOk').style.display = 'none';
   try {
-    const r = await api('PUT', '/api/business', {
+    const body = {
       name: $('setName').value, owner_name: $('setOwner').value, phone: $('setPhone').value,
       city: $('setCity').value, gst_enabled: $('setGst').checked,
       gstin: $('setGst').checked ? $('setGstin').value : '', language: setLangSel,
       upi_id: $('setUpiId').value, upi_payee_name: $('setUpiName').value
-    });
+    };
+    if (paymentQrState.touched) body.payment_qr = paymentQrState.value;
+    const r = await api('PUT', '/api/business', body);
     me.business = r.business;
     renderShellBits(); fillSettings();
     const ok = $('setOk');
@@ -1630,6 +1671,7 @@ function stage2Friendly(err) {
   return m ? tr(m[0], m[1], m[2]) : friendly(err);
 }
 function statusTag(st) {
+  if (st === 'cancelled') return `<span class="tag tag-cancelled">${tr("Cancelled", "कैंसिल")}</span>`;
   if (st === 'ok' || st === 'paid') return `<span class="tag tag-paid">${st === 'ok' ? 'OK' : 'Paid'}</span>`;
   if (st === 'low') return `<span class="tag tag-part">${tr("Low stock", "स्टॉक कम")}</span>`;
   if (st === 'partial') return `<span class="tag tag-part">Partial</span>`;
@@ -1974,6 +2016,16 @@ function stage3Friendly(err) {
   const map = {
     'billing_access_only': ['Your login has Stock access only — billing work is not allowed.', 'आपके login को सिर्फ़ Stock access है — बिलिंग का काम नहीं मिलेगा।', 'Aapke login ko sirf Stock access hai — billing ka kaam nahi milega.'],
     'customer_has_invoices': ['This customer has bills, so it cannot be deleted.', 'इस ग्राहक के बिल हैं, इसलिए delete नहीं होगा।', 'Is customer ke bill hain, isliye delete nahi hoga.'],
+    'cancel_reason_required': ['Write a reason for cancelling the bill.', 'Bill cancel karne ki wajah likho।', 'Bill cancel karne ki wajah likho.'],
+    'already_cancelled': ['This bill is already cancelled.', 'Ye bill pehle hi cancel ho chuka hai।', 'Ye bill pehle hi cancel ho chuka hai.'],
+    'has_returns': ['This bill has returns against it, so it cannot be edited or cancelled.', 'Is bill par wapsi (return) ho chuki hai, isliye ye bill edit ya cancel nahi hoga।', 'Is bill par wapsi (return) ho chuki hai, isliye ye bill edit ya cancel nahi hoga.'],
+    'invoice_cancelled': ['This bill is cancelled — nothing more can be done on it.', 'Ye bill cancel ho chuka hai — is par aur kuch nahi hoga।', 'Ye bill cancel ho chuka hai — is par aur kuch nahi hoga.'],
+    'amount_more_than_pending': ['The amount is more than the pending amount.', 'Rakam baaki udhaar se zyada hai।', 'Rakam baaki udhaar se zyada hai.'],
+    'invalid_xlsx': ['This .xlsx file could not be read — check it is a real Excel file and try again.', 'Ye .xlsx file padhi nahi gayi — asal Excel file hai ya nahi, dekh kar phir try karo।', 'Ye .xlsx file padhi nahi gayi — asal Excel file hai ya nahi, dekh kar phir try karo.'],
+    'xlsx_not_available': ['Excel import is not available on this server right now — please use a CSV file.', 'Is server par Excel import abhi uplabdh nahi hai — kripya CSV file use karo।', 'Is server par Excel import abhi uplabdh nahi hai — kripya CSV file use karo.'],
+    'invalid_qr_image': ['That file is not a valid QR image — choose a JPG/PNG image.', 'Ye file sahi QR image nahi hai — JPG/PNG image chuno।', 'Ye file sahi QR image nahi hai — JPG/PNG image chuno.'],
+    'qr_image_too_large': ['The QR image is too big — use a smaller screenshot (under ~400KB after shrinking).', 'QR image bahut badi hai — chhota screenshot use karo।', 'QR image bahut badi hai — chhota screenshot use karo.'],
+    'only_sale_bills_editable': ['Only normal sale bills can be edited.', 'Sirf aam sale bill hi edit hote hain।', 'Sirf aam sale bill hi edit hote hain.'],
     'payment is more than the pending amount': ['Payment is more than the pending amount.', 'पेमेंट बाकी रकम से ज़्यादा है।', 'Payment baaki rakam se zyada hai.']
   };
   const m = map[err.message];
@@ -2078,6 +2130,9 @@ function renderBarChart(box, days, labelMode) {
 let billProducts = [];
 let billCustomers = [];
 let billMode = 'Cash';
+let billModeTouched = false;
+let editingInvoiceId = null;
+let editingOrigMode = null;
 let lastInvoiceId = null;
 let currentInvoiceId = null;
 let currentInvoiceDetail = null;
@@ -2107,6 +2162,7 @@ async function loadBilling() {
     else document.querySelectorAll('#billItems .bill-item-row').forEach(refreshBillRowOptions);
     billRecalc();
     renderInvoiceList(ir.invoices);
+    loadRecentItems();
     loadReturns();
   } catch (e) { showErr('billErr', stage3Friendly(e)); }
 }
@@ -2474,6 +2530,7 @@ document.querySelectorAll('#billModes button').forEach((b) => b.addEventListener
   document.querySelectorAll('#billModes button').forEach((x) => x.classList.remove('on'));
   b.classList.add('on');
   billMode = b.dataset.mode;
+  billModeTouched = true;
   if (billMode === 'Udhaar') { $('billPaid').value = 0; billRecalc(); }
 }));
 function resetBillForm() {
@@ -2490,6 +2547,78 @@ function resetBillForm() {
   $('billDueDate').value = new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10);
   billRecalc();
 }
+// ---------- Recent items strip (New Bill) ----------
+// "Haal hi me bike" — the shop's most recently billed products; one
+// tap adds a bill row at the last billed rate.
+async function loadRecentItems() {
+  const strip = $('recentStrip'), chips = $('recentChips');
+  if (!strip || !chips) return;
+  try {
+    const r = await api('GET', '/api/billing/recent-items');
+    chips.innerHTML = '';
+    (r.items || []).forEach((it) => {
+      const c = document.createElement('button');
+      c.type = 'button'; c.className = 'recent-chip';
+      c.textContent = `${it.name} · ${fmt(it.last_rate)}`;
+      c.addEventListener('click', () => {
+        const row = billItemRow();
+        $('billItems').appendChild(row);
+        const sel = row.querySelector('.bi-prod');
+        sel.value = String(it.product_id);
+        sel.dispatchEvent(new Event('change'));
+        row.querySelector('.bi-rate').value = it.last_rate;
+        row.querySelector('.bi-qty').focus();
+        billRecalc();
+      });
+      chips.appendChild(c);
+    });
+    strip.classList.toggle('hidden', !(r.items || []).length);
+  } catch (e) { strip.classList.add('hidden'); }
+}
+
+// ---------- Bill edit mode ----------
+// The New Bill form doubles as the edit form: startBillEdit() prefills
+// it from the bill detail; submit then PUTs to /api/invoices/:id (the
+// server reverses + reapplies in one transaction, same bill_no).
+function exitBillEdit(restore) {
+  editingInvoiceId = null;
+  editingOrigMode = null;
+  billModeTouched = false;
+  $('billEditBanner').classList.add('hidden');
+  $('billSaveLabel').textContent = tr("✓ Save Bill", "✓ बिल सेव करो");
+  if (restore) resetBillForm();
+}
+function startBillEdit(detail) {
+  const inv = detail.invoice;
+  exitBillEdit(true);
+  editingInvoiceId = inv.id;
+  editingOrigMode = inv.payment_mode || null;
+  $('billEditLabel').textContent = `${tr("Editing bill", "बिल edit हो रहा है", "Bill edit ho raha hai")} #${inv.bill_no} — ${inv.customer_name}`;
+  $('billEditBanner').classList.remove('hidden');
+  $('billSaveLabel').textContent = tr("✓ Update Bill", "✓ बिल update करो");
+  $('invoiceDetailCard').classList.add('hidden');
+  showScreen('billing');
+  $('billCustomer').value = inv.customer_id ? String(inv.customer_id) : '';
+  $('newCustWrap').classList.add('hidden');
+  $('billItems').innerHTML = '';
+  (detail.items || []).forEach((it) => {
+    const row = billItemRow();
+    $('billItems').appendChild(row);
+    const sel = row.querySelector('.bi-prod');
+    if (it.product_id) { sel.value = String(it.product_id); sel.dispatchEvent(new Event('change')); }
+    row.querySelector('.bi-qty').value = it.qty;
+    row.querySelector('.bi-rate').value = it.sell_price;
+  });
+  if (!detail.items || !detail.items.length) $('billItems').appendChild(billItemRow());
+  $('billDiscount').value = inv.discount || 0;
+  $('billPaid').value = inv.paid_amount || 0;
+  billMode = inv.payment_mode === 'UPI' ? 'UPI' : 'Cash';
+  document.querySelectorAll('#billModes button').forEach((x) => x.classList.toggle('on', x.dataset.mode === billMode));
+  billRecalc();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+$('billEditCancel').addEventListener('click', () => exitBillEdit(true));
+
 $('billForm').addEventListener('submit', async (e) => {
   e.preventDefault(); hideErr('billErr');
   const items = [];
@@ -2515,17 +2644,30 @@ $('billForm').addEventListener('submit', async (e) => {
       customer_id, discount: Number($('billDiscount').value) || 0,
       paid_amount: Number($('billPaid').value) || 0, payment_mode: billMode, items
     };
-    // Feature 5: due date sirf tab bhejo jab balance rahega — poora
-    // payment wale bill par due date nahi lagti. Field khali = saaf
-    // taur par koi due date nahi (server ka default tab nahi chalega).
-    const billTotals = billRecalc();
-    if (billTotals.total - billBody.paid_amount > 0) {
-      billBody.due_date = $('billDueDate').value || '';
+    let r, wasEdit = false;
+    if (editingInvoiceId) {
+      // Edit mode: due date server par rehti hai / wahi rule se banti
+      // hai — yahan se nahi bhejte. Payment mode: user ne mode chua ho
+      // tabhi badlo, warna bill ka purana mode hi rahe.
+      wasEdit = true;
+      if (!billModeTouched && editingOrigMode) billBody.payment_mode = editingOrigMode;
+      r = await api('PUT', '/api/invoices/' + editingInvoiceId, billBody);
+      exitBillEdit(false);
+    } else {
+      // Feature 5: due date sirf tab bhejo jab balance rahega — poora
+      // payment wale bill par due date nahi lagti. Field khali = saaf
+      // taur par koi due date nahi (server ka default tab nahi chalega).
+      const billTotals = billRecalc();
+      if (billTotals.total - billBody.paid_amount > 0) {
+        billBody.due_date = $('billDueDate').value || '';
+      }
+      r = await api('POST', '/api/invoices', billBody);
     }
-    const r = await api('POST', '/api/invoices', billBody);
     lastInvoiceId = r.invoice.id;
     const inv = r.invoice;
-    $('bsTitle').textContent = `✓ ${tr("Bill", "बिल")} #${inv.bill_no} ${tr("saved", "बन गया")}`;
+    $('bsTitle').textContent = wasEdit
+      ? `✓ ${tr("Bill", "बिल")} #${inv.bill_no} ${tr("updated", "update ho gaya")}`
+      : `✓ ${tr("Bill", "बिल")} #${inv.bill_no} ${tr("saved", "बन गया")}`;
     $('bsText').textContent = `${inv.customer_name} · ${tr("Total", "कुल")} ${fmt(inv.total)} · ${tr("Paid", "मिला")} ${fmt(inv.paid_amount)} · ${tr("Balance", "बाकी")} ${fmt(inv.pending_amount)} · ${inv.status}`;
     hideErr('bsErr');
     $('bsWaPhoneWrap').classList.add('hidden');
@@ -2539,6 +2681,7 @@ $('billForm').addEventListener('submit', async (e) => {
     billProducts = pr.products;
     document.querySelectorAll('#billItems .bill-item-row').forEach(refreshBillRowOptions);
     billRecalc();
+    loadRecentItems();
     loadDashboardSummary();
   } catch (err) { showErr('billErr', stage3Friendly(err)); }
 });
@@ -2671,11 +2814,51 @@ async function openInvoiceDetail(id) {
     $('idWaPhone').value = '';
     $('idWaRemind').classList.toggle('hidden', !(inv.pending_amount > 0 && inv.customer_id));
     $('invPayAmount').value = inv.pending_amount > 0 ? inv.pending_amount : '';
+    // Bill edit / cancel (owner-only): cancelled bill par banner +
+    // wajah; edit/cancel buttons sirf owner ko, aur cancel hue ya
+    // opening bill par kabhi nahi. Cancelled bill par payment/returns
+    // form bhi band (server bhi rokta hai).
+    const isOwner = !!(me && me.user && me.user.role === 'owner');
+    const isCancelled = !!inv.cancelled;
+    $('idCancelledBanner').classList.toggle('hidden', !isCancelled);
+    if (isCancelled) $('idCancelReasonTxt').textContent = inv.cancel_reason ? `${tr("Reason", "वजह")}: ${inv.cancel_reason}` : '';
+    $('idCancelWrap').classList.add('hidden');
+    $('idCancelReason').value = '';
+    hideErr('idEditErr');
+    const canModify = isOwner && !isCancelled && inv.kind === 'sale';
+    $('idEditBtn').classList.toggle('hidden', !canModify);
+    $('idCancelBtn').classList.toggle('hidden', !canModify);
+    $('invPayForm').style.display = isCancelled ? 'none' : '';
+    const retBox = $('idReturns'); if (retBox) retBox.style.display = isCancelled ? 'none' : '';
     $('invoiceDetailCard').classList.remove('hidden');
     $('invoiceDetailCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) { showErr('invListErr', stage3Friendly(e)); }
 }
 $('idClose').addEventListener('click', () => { $('invoiceDetailCard').classList.add('hidden'); currentInvoiceId = null; currentInvoiceDetail = null; });
+$('idEditBtn').addEventListener('click', () => {
+  if (!currentInvoiceDetail) return;
+  const r = currentInvoiceDetail;
+  if (r.returns && r.returns.length) { showErr('idEditErr', stage3Friendly({ message: 'has_returns' })); return; }
+  hideErr('idEditErr');
+  startBillEdit(r);
+});
+$('idCancelBtn').addEventListener('click', () => { hideErr('idEditErr'); $('idCancelWrap').classList.remove('hidden'); $('idCancelReason').focus(); });
+$('idCancelBack').addEventListener('click', () => $('idCancelWrap').classList.add('hidden'));
+$('idCancelGo').addEventListener('click', async () => {
+  if (!currentInvoiceId) return;
+  hideErr('idEditErr');
+  const reason = $('idCancelReason').value.trim();
+  if (!reason) { showErr('idEditErr', tr("Write a reason for cancelling the bill.", "Bill cancel karne ki wajah likho।")); return; }
+  try {
+    await api('POST', `/api/invoices/${currentInvoiceId}/cancel`, { reason });
+    $('idCancelWrap').classList.add('hidden');
+    await openInvoiceDetail(currentInvoiceId);
+    const ir = await api('GET', '/api/invoices');
+    renderInvoiceList(ir.invoices);
+    loadDashboardSummary();
+    loadAlerts();
+  } catch (e) { showErr('idEditErr', stage3Friendly(e)); }
+});
 // Feature 5: bill ki due date badlo / hatao.
 $('idDueSave').addEventListener('click', async () => {
   if (!currentInvoiceId) return;
@@ -2803,47 +2986,104 @@ $('invPayForm').addEventListener('submit', async (e) => {
 });
 
 // ---------- bill print view ----------
+// Bill PDF helpers: phone masking (98110 •••21) + amount in words
+// (Indian lakh/crore system), used only by the printed bill.
+function maskPhoneForBill(phone) {
+  const d = String(phone || '').replace(/\D/g, '');
+  if (d.length < 7) return '';
+  const local = d.length > 10 ? d.slice(-10) : d;
+  return local.slice(0, 5) + ' •••' + local.slice(-2);
+}
+function amountInWordsIndian(n) {
+  n = Math.round(Number(n) || 0);
+  if (n === 0) return 'Zero Rupees Only';
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const two = (x) => x < 20 ? ones[x] : (tens[Math.floor(x / 10)] + (x % 10 ? ' ' + ones[x % 10] : ''));
+  const three = (x) => (Math.floor(x / 100) ? ones[Math.floor(x / 100)] + ' Hundred' + (x % 100 ? ' ' : '') : '') + (x % 100 ? two(x % 100) : '');
+  let out = '';
+  const cr = Math.floor(n / 10000000); n %= 10000000;
+  const lk = Math.floor(n / 100000); n %= 100000;
+  const th = Math.floor(n / 1000); n %= 1000;
+  if (cr) out += three(cr) + ' Crore ';
+  if (lk) out += two(lk) + ' Lakh ';
+  if (th) out += two(th) + ' Thousand ';
+  if (n) out += three(n);
+  return out.trim() + ' Rupees Only';
+}
+
+// Printed bill / PDF — founder-approved A4 minimal-ink design:
+// black & white only (colour lives only in the BizYour logo image),
+// plain table header between black rules, GRAND TOTAL in large bold
+// between double rules, note + signature block pinned to the page
+// bottom. Payment box shows ONLY the shop's own uploaded QR + UPI ID
+// (Settings) — the old amount-generated QR is NOT printed any more,
+// and with no uploaded QR the box does not appear at all. Figures are
+// exactly the ones the app already computes — layout only.
 async function printInvoice(id) {
   try {
     const r = await api('GET', '/api/invoices/' + id);
     const inv = r.invoice, biz = r.business;
     $('pbBiz').textContent = biz.name || 'BizYour';
-    $('pbBizSub').textContent = [biz.city, biz.phone ? 'Phone: ' + biz.phone : ''].filter(Boolean).join(' · ') || ' ';
-    $('pbGstin').textContent = inv.gst_enabled && biz.gstin ? 'GSTIN: ' + biz.gstin : '';
-    $('pbNo').textContent = '#' + inv.bill_no;
-    $('pbDate').textContent = inv.date;
+    $('pbSignBiz').textContent = biz.name || 'BizYour';
+    $('pbBizSub').textContent = [biz.city, biz.phone ? '📞 ' + biz.phone : ''].filter(Boolean).join(' · ') || ' ';
+    $('pbGstin').textContent = inv.gst_enabled && biz.gstin ? 'GSTIN ' + biz.gstin : '';
+    $('pbNo').textContent = inv.bill_no;
+    const dParts = String(inv.date || '').split('-');
+    const niceDate = dParts.length === 3
+      ? new Date(Date.UTC(+dParts[0], +dParts[1] - 1, +dParts[2])).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+      : inv.date;
+    $('pbDate').textContent = niceDate;
     $('pbCust').textContent = inv.customer_name;
-    $('pbCustPhone').textContent = r.customer && r.customer.phone ? 'Mobile: ' + r.customer.phone : '';
+    const masked = r.customer && r.customer.phone ? maskPhoneForBill(r.customer.phone) : '';
+    $('pbCustPhone').textContent = masked ? ' · ' + masked : '';
+    const cxl = $('pbCancelled');
+    if (inv.cancelled) {
+      cxl.classList.remove('hidden');
+      $('pbCancelReason').textContent = inv.cancel_reason ? ' — ' + inv.cancel_reason : '';
+    } else cxl.classList.add('hidden');
     const tb = $('pbItems'); tb.innerHTML = '';
-    r.items.forEach((it) => {
+    r.items.forEach((it, i) => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td></td><td class="pb-num">${fmtQty(it.qty)}</td><td class="pb-num">${Number(it.sell_price).toLocaleString('en-IN')}</td><td class="pb-num">${inv.gst_enabled ? Number(it.gst_rate) + '%' : '—'}</td><td class="pb-num">${Number(it.amount).toLocaleString('en-IN')}</td>`;
-      tr.children[0].textContent = it.product_name;
+      tr.innerHTML = `<td class="pb-sno">${i + 1}</td><td></td><td class="pb-num">${fmtQty(it.qty)}</td><td class="pb-num">${Number(it.sell_price).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td class="pb-num">${Number(it.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>`;
+      tr.children[1].textContent = it.product_name;
       tb.appendChild(tr);
     });
     $('pbSubtotal').textContent = fmt(inv.subtotal);
-    $('pbGstRow').style.display = inv.gst_enabled ? '' : 'none';
-    $('pbGst').textContent = fmt(inv.gst_amount);
-    // CGST/SGST: the two equal halves of the same included GST (sgst takes
-    // the rounding remainder, so the halves always add back to gst_amount).
-    const cgst = Math.round((Number(inv.gst_amount) / 2) * 100) / 100;
-    $('pbCgstRow').style.display = inv.gst_enabled ? '' : 'none';
-    $('pbSgstRow').style.display = inv.gst_enabled ? '' : 'none';
-    $('pbCgst').textContent = fmt(cgst);
-    $('pbSgst').textContent = fmt(Math.round((Number(inv.gst_amount) - cgst) * 100) / 100);
-    $('pbDiscount').textContent = fmt(inv.discount);
+    $('pbDiscountRow').style.display = Number(inv.discount) > 0 ? '' : 'none';
+    $('pbDiscount').textContent = '− ' + fmt(inv.discount);
+    // Taxable value + CGST/SGST: same halves math as before (sgst takes
+    // the rounding remainder). "@ r%" shows only when every GST item on
+    // the bill shares one rate.
+    const gstOn = !!inv.gst_enabled && Number(inv.gst_amount) > 0;
+    $('pbTaxableRow').style.display = gstOn ? '' : 'none';
+    $('pbCgstRow').style.display = gstOn ? '' : 'none';
+    $('pbSgstRow').style.display = gstOn ? '' : 'none';
+    if (gstOn) {
+      $('pbTaxable').textContent = fmt(Math.round((Number(inv.total) - Number(inv.gst_amount)) * 100) / 100);
+      const cgst = Math.round((Number(inv.gst_amount) / 2) * 100) / 100;
+      const rates = [...new Set(r.items.filter((it) => Number(it.gst_rate) > 0).map((it) => Number(it.gst_rate)))];
+      const rateTxt = rates.length === 1 ? ' @ ' + rates[0] + '%' : '';
+      $('pbCgstLabel').textContent = 'CGST' + rateTxt;
+      $('pbSgstLabel').textContent = 'SGST' + rateTxt;
+      $('pbCgst').textContent = fmt(cgst);
+      $('pbSgst').textContent = fmt(Math.round((Number(inv.gst_amount) - cgst) * 100) / 100);
+    }
     $('pbTotal').textContent = fmt(inv.total);
-    $('pbPaid').textContent = fmt(inv.paid_amount);
-    $('pbBalance').textContent = fmt(inv.pending_amount);
-    // Updates Stage A: the same server-generated QR goes on the printed /
-    // PDF bill — only when upi_qr came back (UPI ID set + balance due).
-    const pbQr = $('pbUpiQr');
-    if (r.upi_qr && r.upi_qr.svg) {
-      pbQr.innerHTML = `<div class="pb-upi-svg">${r.upi_qr.svg}</div><div style="font-size:12.5px">Scan to pay ${fmt(inv.pending_amount)} by UPI</div>`;
-      pbQr.classList.remove('hidden');
+    $('pbWords').textContent = 'Rakam shabdon me: ' + amountInWordsIndian(inv.total);
+    $('pbGstNote').textContent = gstOn ? '(GST total me shaamil hai)' : '';
+    // Payment box: ONLY the shop's uploaded QR (+ UPI ID line when set).
+    const payBox = $('pbPayBox');
+    if (biz.payment_qr) {
+      $('pbQrImg').src = biz.payment_qr;
+      const upiEl = $('pbUpiId');
+      if (biz.upi_id) { upiEl.textContent = 'UPI ID: ' + biz.upi_id; upiEl.style.display = ''; }
+      else upiEl.style.display = 'none';
+      payBox.classList.remove('hidden');
     } else {
-      pbQr.innerHTML = '';
-      pbQr.classList.add('hidden');
+      payBox.classList.add('hidden');
+      $('pbQrImg').removeAttribute('src');
     }
     window.print();
   } catch (e) { showErr('billErr', stage3Friendly(e)); }
@@ -3095,6 +3335,45 @@ function waNum(raw) {
   if (d.length === 10) d = '91' + d;
   return d;
 }
+// ---------- One-tap vasuli (alerts) ----------
+// "Paise mil gaye" on a customer alert opens a small panel: amount is
+// prefilled with the customer's FULL pending (fetched fresh — the
+// alert row only shows the due-date part), mode selectable; one tap on
+// confirm records it via POST /api/customers/:id/vasuli (FIFO across
+// that customer's bills). Same permission as recording a payment.
+let vasuliCustomerId = null;
+async function openVasuliPanel(g) {
+  hideErr('vasuliErr');
+  $('vasuliOk').classList.add('hidden');
+  vasuliCustomerId = g.customer_id;
+  $('vasuliName').textContent = g.customer_name;
+  $('vasuliAmount').value = g.amount;
+  $('vasuliWrap').classList.remove('hidden');
+  try {
+    const r = await api('GET', '/api/customers/' + g.customer_id);
+    if (r.customer && Number(r.customer.pending) > 0) $('vasuliAmount').value = r.customer.pending;
+  } catch (e) { /* alert amount stays as the prefill */ }
+  $('vasuliAmount').focus();
+  $('vasuliWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+$('vasuliCancel').addEventListener('click', () => { $('vasuliWrap').classList.add('hidden'); vasuliCustomerId = null; });
+$('vasuliGo').addEventListener('click', async () => {
+  if (!vasuliCustomerId) return;
+  hideErr('vasuliErr');
+  const amount = Number($('vasuliAmount').value);
+  if (!(amount > 0)) { showErr('vasuliErr', tr("Write the amount received.", "Kitne paise mile, wo likho।")); return; }
+  try {
+    const r = await api('POST', '/api/customers/' + vasuliCustomerId + '/vasuli', { amount, mode: $('vasuliMode').value });
+    $('vasuliWrap').classList.add('hidden');
+    vasuliCustomerId = null;
+    const ok = $('vasuliOk');
+    ok.textContent = `✅ ${tr("Vasuli recorded", "वसूली दर्ज हो गई")} — ${fmt(r.received)} · ${tr("balance now", "अब बाकी")} ${fmt(r.customer.pending)}`;
+    ok.classList.remove('hidden');
+    loadAlerts();
+    loadDashboardSummary();
+  } catch (e) { showErr('vasuliErr', stage3Friendly(e)); }
+});
+
 async function loadAlerts() {
   const box = $('alertsBody');
   if (!box || !me) return;
@@ -3125,6 +3404,11 @@ async function loadAlerts() {
       rem.textContent = tr("💬 Remind", "💬 रिमाइंडर");
       rem.addEventListener('click', () => sendReminderWhatsApp(g.customer_id, 'alertsErr', () => loadAlerts()));
       row.appendChild(rem);
+      const vas = document.createElement('button');
+      vas.className = 'btn btn-blue btn-sm';
+      vas.textContent = tr("✅ Paise mil gaye", "✅ पैसे मिल गए");
+      vas.addEventListener('click', () => openVasuliPanel(g));
+      row.appendChild(vas);
       box.appendChild(row);
     };
     const supRow = (g, kind) => {
@@ -3381,8 +3665,67 @@ function repComputeRange() {
   if (repPreset === 'custom' && repCustomRange) return repCustomRange;
   return { from: today.slice(0, 8) + '01', to: today };
 }
+// ---------- Monthly Business Report Card (owner-only) ----------
+async function loadReportCard() {
+  const card = $('reportCardCard');
+  if (!card || !me) return;
+  const isOwner = me.user && me.user.role === 'owner';
+  card.classList.toggle('hidden', !isOwner);
+  if (!isOwner) return;
+  const monthEl = $('rcMonth');
+  if (!monthEl.value) monthEl.value = new Date().toISOString().slice(0, 7);
+  hideErr('rcErr');
+  try {
+    const r = await api('GET', '/api/reports/report-card?month=' + encodeURIComponent(monthEl.value));
+    const c = r.report_card;
+    const box = $('rcBody');
+    const prodRows = c.top_products.length
+      ? c.top_products.map((tp, i) => `<div class="sum-row"><span>${i + 1}. </span><span style="flex:1"></span><span>${fmt(tp.amount)}</span></div>`).join('')
+      : `<div class="hint">${tr("No sales this month.", "Is mahine koi sale nahi।")}</div>`;
+    const pendRows = c.top_pending_customers.length
+      ? c.top_pending_customers.map((tp) => `<div class="sum-row"><span></span><span>${fmt(tp.pending)}</span></div>`).join('')
+      : `<div class="hint">${tr("No pending udhaar.", "Koi udhaar baaki nahi।")}</div>`;
+    box.innerHTML = `
+      <div class="sum-row"><span>${tr("Total sale", "Kul sale")} (${c.bills_count} ${tr("bills", "बिल")})</span><b>${fmt(c.sale)}</b></div>
+      <div class="sum-row"><span>${tr("Cost of goods (COGS)", "Maal ki laagat (COGS)")}</span><span>${fmt(c.cogs)}</span></div>
+      <div class="sum-row"><span>${tr("Expenses", "Kharcha")}</span><span>${fmt(c.expenses)}</span></div>
+      <div class="sum-row total"><span>${tr("Net profit", "Munafa (Net)")}</span><span style="color:${c.net < 0 ? 'var(--red)' : 'var(--green)'}">${fmt(c.net)}</span></div>
+      ${Number(c.returns_total) > 0 ? `<div class="sum-row"><span>${tr("Returns this month", "Is mahine wapsi")}</span><span>${fmt(c.returns_total)}</span></div>` : ''}
+      <div class="sum-row"><span>${tr("Udhaar diya (this month's bills still unpaid)", "Udhaar diya (is mahine ke bill, abhi baaki)")}</span><span>${fmt(c.udhaar_diya)}</span></div>
+      <div class="sum-row"><span>${tr("Vasuli (payments received this month)", "Vasuli (is mahine mili payment)")}</span><span>${fmt(c.vasuli)}</span></div>
+      <div class="sum-row"><span>${tr("Total pending udhaar (all time)", "Kul baaki udhaar (abhi tak)")}</span><b>${fmt(c.total_pending)}</b></div>
+      <div class="sum-row"><span>${tr("Stock value", "Stock value")} <span class="hint">(${esc(c.stock_value_label)})</span></span><span>${fmt(c.stock_value)}</span></div>
+      <h4 style="margin:12px 0 4px">${tr("🏆 Top 3 products", "🏆 Sabse zyada bike")}</h4>
+      <div id="rcTopProducts"></div>
+      <h4 style="margin:12px 0 4px">${tr("⏰ Biggest pending customers", "⏰ Sabse zyada baaki wale")}</h4>
+      <div id="rcTopPending"></div>`;
+    // product / pending names go in as text (never innerHTML)
+    const tpBox = box.querySelector('#rcTopProducts');
+    tpBox.innerHTML = prodRows;
+    [...tpBox.querySelectorAll('.sum-row')].forEach((row, i) => {
+      const nameSpan = row.children[1];
+      if (nameSpan && c.top_products[i]) nameSpan.textContent = c.top_products[i].name;
+    });
+    const pdBox = box.querySelector('#rcTopPending');
+    pdBox.innerHTML = pendRows;
+    [...pdBox.querySelectorAll('.sum-row')].forEach((row, i) => {
+      if (c.top_pending_customers[i]) row.children[0].textContent = c.top_pending_customers[i].name;
+    });
+  } catch (e) { showErr('rcErr', stage3Friendly(e)); }
+}
+$('rcMonth').addEventListener('change', loadReportCard);
+$('rcWaBtn').addEventListener('click', async () => {
+  hideErr('rcErr');
+  try {
+    const m = $('rcMonth').value || new Date().toISOString().slice(0, 7);
+    const r = await api('GET', '/api/reports/report-card/whatsapp-link?month=' + encodeURIComponent(m));
+    window.open(r.url, '_blank');
+  } catch (e) { showErr('rcErr', stage3Friendly(e)); }
+});
+
 async function loadReports() {
   hideErr('repErr');
+  loadReportCard();
   const range = repComputeRange();
   $('repRangeLabel').textContent = range.from + ' → ' + range.to;
   try {
@@ -3910,22 +4253,41 @@ function readImportFileText(file) {
     fr.readAsText(file);
   });
 }
+// .xlsx goes up as base64 (binary-safe); the server parses it with the
+// exact same pipeline as CSV/TSV.
+function readImportFileBase64(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const buf = new Uint8Array(fr.result);
+      let bin = '';
+      const CHUNK = 0x8000;
+      for (let i = 0; i < buf.length; i += CHUNK) bin += String.fromCharCode.apply(null, buf.subarray(i, i + CHUNK));
+      resolve(btoa(bin));
+    };
+    fr.onerror = () => reject(new Error('empty_file'));
+    fr.readAsArrayBuffer(file);
+  });
+}
 
 const importPreviewBtn = $('importPreviewBtn');
 if (importPreviewBtn) importPreviewBtn.addEventListener('click', async () => {
   hideErr('importErr');
   const okEl = $('importOk'); if (okEl) okEl.style.display = 'none';
   const file = $('importFile').files && $('importFile').files[0];
-  if (!file) { showErr('importErr', tr("Choose a CSV file first.", "Pehle CSV file chunein।")); return; }
-  if (/\.(xlsx|xls)$/i.test(file.name)) {
-    showErr('importErr', tr("This is an Excel (.xlsx) file — open it in Excel, use \"Save As → CSV\", then upload that CSV.", "Ye Excel (.xlsx) file hai — Excel me kholkar \"Save As → CSV\" karke save karein, phir wo CSV upload karein।"));
+  if (!file) { showErr('importErr', tr("Choose a CSV or Excel file first.", "Pehle CSV ya Excel file chunein।")); return; }
+  if (/\.xls$/i.test(file.name)) {
+    showErr('importErr', tr("This is the old .xls format — open it in Excel and save it as .xlsx or CSV, then upload.", "Ye purana .xls format hai — Excel me kholkar .xlsx ya CSV me save karke upload karo।"));
     return;
   }
+  const isXlsx = /\.xlsx$/i.test(file.name);
   const type = $('importType').value;
   try {
-    const content = await readImportFileText(file);
-    const r = await api('POST', '/api/import/' + type + '/preview', { content, duplicate: importDupStrategy() });
-    importPreviewState = { type, content, duplicate: importDupStrategy() };
+    const content = isXlsx ? await readImportFileBase64(file) : await readImportFileText(file);
+    const payload = { content, duplicate: importDupStrategy() };
+    if (isXlsx) payload.format = 'xlsx';
+    const r = await api('POST', '/api/import/' + type + '/preview', payload);
+    importPreviewState = { type, content, duplicate: importDupStrategy(), format: isXlsx ? 'xlsx' : undefined };
     renderImportPreview(r);
     $('importCommitBtn').classList.remove('hidden');
   } catch (e) { invalidateImportPreview(); showErr('importErr', friendly(e)); }
@@ -3962,7 +4324,9 @@ if (importCommitBtn) importCommitBtn.addEventListener('click', async () => {
   const st = importPreviewState;
   importCommitBtn.disabled = true;
   try {
-    const r = await api('POST', '/api/import/' + st.type + '/commit', { content: st.content, duplicate: st.duplicate });
+    const payload = { content: st.content, duplicate: st.duplicate };
+    if (st.format) payload.format = st.format;
+    const r = await api('POST', '/api/import/' + st.type + '/commit', payload);
     invalidateImportPreview();
     const box = $('importResult');
     box.innerHTML = `<div class="ok-msg" style="display:block">${tr("Import done ✓", "Import ho gaya ✓")} — ` +
