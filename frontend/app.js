@@ -431,6 +431,15 @@ $('resetForm').addEventListener('submit', async (e) => {
   } catch (err) { showErr('forgotErr', friendly(err)); }
 });
 
+// Mobile drawer: hamburger ya logo dabane par sidebar side se khulta hai
+const sideBarEl = document.querySelector('#view-app .sidebar');
+function openSide(){ if (sideBarEl) sideBarEl.classList.add('open'); const o = $('sideOverlay'); if (o) o.classList.remove('hidden'); document.body.classList.add('side-open'); }
+function closeSide(){ if (sideBarEl) sideBarEl.classList.remove('open'); const o = $('sideOverlay'); if (o) o.classList.add('hidden'); document.body.classList.remove('side-open'); }
+const smb = $('sideMenuBtn'); if (smb) smb.addEventListener('click', openSide);
+const tmk = $('topbarMark'); if (tmk) tmk.addEventListener('click', openSide);
+const sov = $('sideOverlay'); if (sov) sov.addEventListener('click', closeSide);
+if (sideBarEl) sideBarEl.addEventListener('click', (e) => { if (e.target.closest('.nav-item, #logoutBtn')) closeSide(); });
+
 $('logoutBtn').addEventListener('click', async () => {
   try { await api('POST', '/api/auth/logout'); } catch (e) { /* ignore */ }
   token = null; me = null; localStorage.removeItem('bos_token');

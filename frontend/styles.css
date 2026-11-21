@@ -762,3 +762,61 @@ body.bz-intro-on{overflow:hidden}
 .mk-group-chip{ border:1px solid var(--line); border-radius:12px; padding:8px 12px; cursor:pointer; background:#fff; font-size:12.5px; }
 .mk-group-chip:hover{ border-color:var(--blue); }
 .mk-group-chip.cur{ border-color:var(--blue); background:var(--blue-soft); cursor:default; }
+
+/* ---------- Sidebar scroll fix + Android/mobile app layout (founder, 21 Nov) ---------- */
+.sidebar{ overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; scrollbar-color:#C9D2E8 transparent; }
+.sidebar::-webkit-scrollbar{ width:6px; }
+.sidebar::-webkit-scrollbar-thumb{ background:#C9D2E8; border-radius:99px; }
+@media (max-width:820px){
+  .app{ flex-direction:column; }
+  .sidebar{ width:100%; height:auto; position:static; overflow:visible; padding:12px 12px 8px; border-right:none; border-bottom:1px solid var(--line); }
+  .sidebar .logo{ padding-bottom:10px; }
+  .sidebar .shop{ margin-bottom:10px; }
+  .sidebar nav{ flex-direction:row; flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; gap:6px; padding-bottom:8px; scrollbar-width:thin; }
+  .sidebar .nav-item{ white-space:nowrap; width:auto; flex-shrink:0; padding:8px 11px; font-size:13.5px; }
+  .sidebar .side-user{ margin-top:6px; padding-top:8px; }
+  .main{ padding:14px 12px 32px; }
+  .topbar{ flex-wrap:wrap; gap:10px; }
+}
+@media (max-width:820px){
+  .stats{ grid-template-columns:repeat(2,1fr); gap:10px; }
+  .grid2{ grid-template-columns:1fr; }
+  .bill-grid{ grid-template-columns:1fr; }
+  .stats>*, .grid2>*, .bill-grid>*{ min-width:0; }
+  .main .card:has(table){ overflow-x:auto; }
+  .bill-grid .card{ overflow-x:auto; }
+  .bill-item-row{ grid-template-columns:1fr 62px 84px 56px 84px 30px; gap:6px; }
+  .item-row{ grid-template-columns:1fr 70px 92px 84px 30px; gap:6px; }
+  .toolbar{ flex-wrap:wrap; }
+  .top-right{ margin-left:0; flex-wrap:wrap; }
+}
+@media (max-width:560px){
+  .mk-grid3, .mk-grid4{ grid-template-columns:1fr; }
+}
+.mk-li, .mk-li>*{ min-width:0; }
+@media (max-width:820px){
+  .sidebar .mk-seg{ flex-shrink:0; margin-bottom:0; align-self:center; }
+  .sidebar .mk-seg button{ flex:none; padding:7px 14px; white-space:nowrap; }
+}
+
+/* ---------- Mobile drawer (founder: strip nahi — hamburger/logo se side se khulne wala menu) ---------- */
+.side-menu-btn{ display:none; }
+.topbar-mark{ display:none; }
+body.side-open{ overflow:hidden; }
+@media (max-width:820px){
+  .app{ flex-direction:row; }
+  .sidebar{ position:fixed; left:0; top:0; width:min(282px,85vw); height:100vh; height:100dvh; z-index:1500; transform:translateX(-106%); transition:transform .26s ease; box-shadow:0 0 44px rgba(10,16,34,.35); overflow-y:auto; overflow-x:hidden; padding:20px 14px; border-right:1px solid var(--line); background:var(--card); }
+  .sidebar.open{ transform:none; }
+  .sidebar nav{ flex-direction:column; flex-wrap:nowrap; overflow:visible; gap:2px; padding-bottom:0; }
+  .sidebar .nav-item{ white-space:normal; width:100%; flex-shrink:1; padding:10px 12px; font-size:14px; }
+  .sidebar .mk-seg{ flex-shrink:1; margin-bottom:8px; align-self:stretch; }
+  .sidebar .mk-seg button{ flex:1; padding:7px 0; white-space:normal; }
+  .sidebar .side-user{ margin-top:14px; padding-top:12px; }
+  .side-overlay{ position:fixed; inset:0; background:rgba(9,13,26,.48); z-index:1400; }
+  .side-menu-btn{ display:inline-flex; flex-direction:column; justify-content:center; gap:5px; width:42px; height:42px; padding:10px; border:1px solid var(--line); background:#fff; border-radius:11px; cursor:pointer; flex-shrink:0; }
+  .side-menu-btn span{ display:block; height:2.5px; border-radius:2px; background:#22305A; }
+  .topbar-mark{ display:block; width:38px; height:38px; border-radius:10px; cursor:pointer; flex-shrink:0; }
+}
+@media (min-width:821px){
+  .side-overlay{ display:none !important; }
+}

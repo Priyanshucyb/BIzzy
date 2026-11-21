@@ -601,9 +601,12 @@
     <button class="btn btn-ghost btn-sm" id="logoutBtn" style="margin-top:10px" data-en="Log out" data-hi="लॉगआउट">Log out</button>
     <div class="side-foot"><span class="dot"></span><b data-en="Local mode" data-hi="लोकल मोड">Local mode</b><span data-en="Local mode — data stays on this computer" data-hi="लोकल मोड — डेटा इसी कंप्यूटर पर रहता है">Local mode — data stays on this computer</span></div>
   </aside>
+  <div id="sideOverlay" class="side-overlay hidden"></div>
 
   <main class="main">
     <div class="topbar">
+      <button type="button" id="sideMenuBtn" class="side-menu-btn" aria-label="Menu"><span></span><span></span><span></span></button>
+      <img class="topbar-mark" id="topbarMark" src="brand/bizyour-mark-512.png" alt="BizYour">
       <div><h1 id="pageTitle">Dashboard</h1><div class="date" id="todayLine"></div></div>
       <div class="top-right">
         <div class="gsearch">
