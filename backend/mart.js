@@ -52,7 +52,7 @@ function guessCategory(...texts) {
 }
 
 function registerMart(app, deps) {
-  const { db, requireAuth, requireOwner, auditLog, round2, validNum, queueSync } = deps;
+  const { db, requireAuth, requireOwner, auditLog, round2, validNum, queueSync, isWorkspaceActive } = deps;
 
   // ---------- small helpers ----------
   const today = () => new Date().toISOString().slice(0, 10);
@@ -83,6 +83,20 @@ function registerMart(app, deps) {
     return res.status(403).json({ error: 'mart_access_only' });
   }
   const guard = [requireAuth, requireMart];
+
+  // Two-stage workflow (2026-11-22): BUYING in the Mart needs only a
+  // BizYour account, but SELLING (profile, leads, quotes, listings,
+  // summary/report, restock) needs an ACTIVE workspace — the seller is
+  // a real set-up shop. Seller-classified routes use sellerGuard; the
+  // server.js workspaceGate applies the same split one layer earlier.
+  async function requireWorkspaceActive(req, res, next) {
+    if (typeof isWorkspaceActive === 'function'
+        && !(await isWorkspaceActive(req.user.business_id))) {
+      return res.status(403).json({ error: 'workspace_not_setup' });
+    }
+    next();
+  }
+  const sellerGuard = [...guard, requireWorkspaceActive];
 
   async function getBiz(id) { return await db.get('SELECT * FROM businesses WHERE id = ?', id); }
 
@@ -273,7 +287,7 @@ function registerMart(app, deps) {
     });
   });
 
-  app.put('/api/mart/profile', ...guard, requireOwner, async (req, res) => {
+  app.put('/api/mart/profile', ...sellerGuard, requireOwner, async (req, res) => {
     const b = req.body || {};
     await ensureProfile(req.user.business_id);
     const cats = (Array.isArray(b.categories) ? b.categories : []).filter((c) => CATEGORIES.includes(c));
@@ -291,7 +305,7 @@ function registerMart(app, deps) {
   });
 
   // ===================== summary (badges + home) =====================
-  app.get('/api/mart/summary', ...guard, async (req, res) => {
+  app.get('/api/mart/summary', ...sellerGuard, async (req, res) => {
     const bizId = req.user.business_id;
     const t = today();
     const profile = await ensureProfile(bizId);
@@ -325,7 +339,7 @@ function registerMart(app, deps) {
   });
 
   // ===================== restock from Workspace data =====================
-  app.get('/api/mart/restock', ...guard, async (req, res) => {
+  app.get('/api/mart/restock', ...sellerGuard, async (req, res) => {
     const bizId = req.user.business_id;
     const prods = await db.all(
       `SELECT * FROM products WHERE business_id = ? AND stock_qty <= low_stock_limit ORDER BY stock_qty ASC, name ASC`, bizId);
@@ -353,7 +367,7 @@ function registerMart(app, deps) {
   });
 
   // ===================== inquiries (buyer) =====================
-  app.get('/api/mart/match-preview', ...guard, async (req, res) => {
+  app.get('/api/mart/match-preview', ...sellerGuard, async (req, res) => {
     const inq = {
       business_id: req.user.business_id,
       category: String(req.query.category || ''),
@@ -572,7 +586,7 @@ function registerMart(app, deps) {
     }
     return out;
   }
-  app.get('/api/mart/leads', ...guard, async (req, res) => {
+  app.get('/api/mart/leads', ...sellerGuard, async (req, res) => {
     const scope = req.query.scope === 'all' ? 'all' : 'matched';
     res.json({ leads: await leadsFor(req.user.business_id, scope) });
   });
@@ -596,7 +610,7 @@ function registerMart(app, deps) {
     };
   }
 
-  app.post('/api/mart/inquiries/:id/quotes', ...guard, async (req, res) => {
+  app.post('/api/mart/inquiries/:id/quotes', ...sellerGuard, async (req, res) => {
     const bizId = req.user.business_id;
     const inq = await db.get('SELECT * FROM mart_inquiries WHERE id = ?', req.params.id);
     if (!inq) return res.status(404).json({ error: 'inquiry_not_found' });
@@ -639,7 +653,7 @@ function registerMart(app, deps) {
   }
 
   // Seller edits price/terms of a live quote (e.g. answering a counter-offer).
-  app.put('/api/mart/quotes/:id', ...guard, async (req, res) => {
+  app.put('/api/mart/quotes/:id', ...sellerGuard, async (req, res) => {
     const x = await quoteWithParties(req.params.id);
     if (!x || x.q.seller_business_id !== req.user.business_id) return res.status(404).json({ error: 'quote_not_found' });
     if (x.q.status !== 'sent' || inquiryState(x.inq) !== 'open') return res.status(400).json({ error: 'quote_locked' });
@@ -660,7 +674,7 @@ function registerMart(app, deps) {
     res.json({ quote: publicQuote(await db.get('SELECT * FROM mart_quotes WHERE id = ?', x.q.id)) });
   });
 
-  app.post('/api/mart/quotes/:id/withdraw', ...guard, async (req, res) => {
+  app.post('/api/mart/quotes/:id/withdraw', ...sellerGuard, async (req, res) => {
     const x = await quoteWithParties(req.params.id);
     if (!x || x.q.seller_business_id !== req.user.business_id) return res.status(404).json({ error: 'quote_not_found' });
     if (x.q.status !== 'sent') return res.status(400).json({ error: 'quote_locked' });
@@ -712,7 +726,7 @@ function registerMart(app, deps) {
     res.status(201).json({ order: await publicOrder(o, bizId, new Map()) });
   });
 
-  app.get('/api/mart/quotes-sent', ...guard, async (req, res) => {
+  app.get('/api/mart/quotes-sent', ...sellerGuard, async (req, res) => {
     const bizId = req.user.business_id;
     const rows = await db.all('SELECT * FROM mart_quotes WHERE seller_business_id = ? ORDER BY updated_at DESC, id DESC LIMIT 200', bizId);
     const out = [];
@@ -787,7 +801,7 @@ function registerMart(app, deps) {
     return { o, side: o.buyer_business_id === bizId ? 'buyer' : 'seller' };
   }
 
-  app.post('/api/mart/orders/:id/status', ...guard, async (req, res) => {
+  app.post('/api/mart/orders/:id/status', ...sellerGuard, async (req, res) => {
     const x = await partyOrder(req, res); if (!x) return;
     const body = req.body || {};
     const to = String(body.status || '');
@@ -950,7 +964,7 @@ function registerMart(app, deps) {
   // Mart margin report (buyer): what Mart buying looks like against the
   // CURRENT Workspace sell price of the matched product. The margin is an
   // estimate at today's sell rate — the UI labels it exactly that way.
-  app.get('/api/mart/report', ...guard, async (req, res) => {
+  app.get('/api/mart/report', ...sellerGuard, async (req, res) => {
     const bizId = req.user.business_id;
     const rows = await db.all(
       `SELECT * FROM mart_orders WHERE buyer_business_id = ? AND status = 'delivered' ORDER BY id DESC LIMIT 200`, bizId);
@@ -1027,7 +1041,7 @@ function registerMart(app, deps) {
     for (const l of rows) out.push({ ...publicListing(l), mine: l.business_id === req.user.business_id, seller: await publicSeller(l.business_id, cache) });
     res.json({ listings: out });
   });
-  app.get('/api/mart/my-listings', ...guard, async (req, res) => {
+  app.get('/api/mart/my-listings', ...sellerGuard, async (req, res) => {
     const rows = await db.all('SELECT * FROM mart_listings WHERE business_id = ? ORDER BY id DESC', req.user.business_id);
     res.json({ listings: rows.map(publicListing) });
   });
@@ -1038,7 +1052,7 @@ function registerMart(app, deps) {
     if (!validNum(b.moq) || Number(b.moq) <= 0) return 'invalid_moq';
     return null;
   }
-  app.post('/api/mart/listings', ...guard, async (req, res) => {
+  app.post('/api/mart/listings', ...sellerGuard, async (req, res) => {
     const b = req.body || {};
     const prof = await ensureProfile(req.user.business_id);
     if (!prof.is_seller) return res.status(403).json({ error: 'not_seller' });
@@ -1051,7 +1065,7 @@ function registerMart(app, deps) {
     , req.user.business_id, pid, str(b.name, 120), b.category, UNITS.includes(b.unit) ? b.unit : 'kg', round2(b.price), Number(b.moq), ph.photo);
     res.status(201).json({ listing: publicListing(await db.get('SELECT * FROM mart_listings WHERE id = ?', r.lastInsertRowid)) });
   });
-  app.put('/api/mart/listings/:id', ...guard, async (req, res) => {
+  app.put('/api/mart/listings/:id', ...sellerGuard, async (req, res) => {
     const l = await db.get('SELECT * FROM mart_listings WHERE id = ? AND business_id = ?', req.params.id, req.user.business_id);
     if (!l) return res.status(404).json({ error: 'listing_not_found' });
     const raw = req.body || {};
@@ -1067,7 +1081,7 @@ function registerMart(app, deps) {
     , str(b.name, 120), b.category, UNITS.includes(b.unit) ? b.unit : l.unit, round2(b.price), Number(b.moq), photo, b.active ? 1 : 0, l.id);
     res.json({ listing: publicListing(await db.get('SELECT * FROM mart_listings WHERE id = ?', l.id)) });
   });
-  app.delete('/api/mart/listings/:id', ...guard, async (req, res) => {
+  app.delete('/api/mart/listings/:id', ...sellerGuard, async (req, res) => {
     const r = await db.run('DELETE FROM mart_listings WHERE id = ? AND business_id = ?', req.params.id, req.user.business_id);
     if (!r.changes) return res.status(404).json({ error: 'listing_not_found' });
     res.json({ ok: true });
