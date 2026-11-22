@@ -130,9 +130,9 @@ if (db.engine === 'sqlite') { try { await db.exec('PRAGMA busy_timeout = 5000');
 const tx = await db.begin();
 try {
   const biz = await tx.run(
-    `INSERT INTO businesses (name, owner_name, phone, city, gst_enabled, gstin, language)
-     VALUES ('Sharma General Store', 'Sharma ji', '9811024680', 'Delhi', 1, '07ABCDE1234F1Z5', 'en')`
-  );
+    `INSERT INTO businesses (name, owner_name, phone, city, category, address, landmark, pincode, state, workspace_activated_at, gst_enabled, gstin, language)
+     VALUES ('Sharma General Store', 'Sharma ji', '9811024680', 'Delhi', 'kirana', 'Shop No. 12, Main Bazaar Road', 'Near Clock Tower', '110001', 'Delhi', ?, 1, '07ABCDE1234F1Z5', 'en')`
+  , new Date().toISOString().replace('T', ' ').slice(0, 19));
   const bizId = biz.lastInsertRowid;
 
   const ownerHash = bcrypt.hashSync('demo1234', 10);
