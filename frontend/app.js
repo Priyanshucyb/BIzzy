@@ -4,6 +4,7 @@
 const $ = (id) => document.getElementById(id);
 let token = localStorage.getItem('bos_token') || null;
 let me = null; // { user, business }
+let subLocked = false; // subscription lock state (trial/plan over) — see showSubLock()
 let setupLang = 'en';
 let setLangSel = 'en';
 
@@ -45,15 +46,58 @@ async function api(method, path, body) {
   hideConnBanner();
   let data = {};
   try { data = await res.json(); } catch (e) { /* empty */ }
-  if (!res.ok) throw Object.assign(new Error(data.error || 'request_failed'), { status: res.status, data });
+  if (!res.ok) {
+    // 2026-11-22 flows, handled centrally so no screen shows a raw error:
+    //  - session_expired (the 30-day LOGIN token): back to login with a
+    //    clear note. This is the ONLY automatic logout in the app.
+    //  - subscription_expired (trial/plan over): NEVER a logout — the
+    //    workspace locks (lock screen), the session and data stay.
+    //  - workspace_not_setup on a workspace API: an account-only user
+    //    who wandered into a workspace screen is sent to the welcome /
+    //    setup flow. Mart calls handle their own 403 (mart.js).
+    if (res.status === 401 && data.error === 'session_expired') handleSessionExpired();
+    else if (res.status === 403 && data.error === 'subscription_expired') showSubLock(true);
+    else if (res.status === 403 && data.error === 'workspace_not_setup'
+      && !String(path).startsWith('/api/mart/')
+      && me && me.business && !me.business.setup_complete) {
+      openWelcome(true);
+    }
+    throw Object.assign(new Error(data.error || 'request_failed'), { status: res.status, data });
+  }
+  // A write SUCCEEDING while the lock is up means the subscription is
+  // active again (e.g. the admin just approved the payment) — lift the
+  // lock and refresh the current view in place, same session, same spot.
+  if (subLocked && method !== 'GET') {
+    hideSubLock();
+    refreshCurrentView();
+  }
   return data;
+}
+
+// The 30-day login session ended → clear the token and ask for a fresh
+// login. (Subscription expiry NEVER comes here — it locks, not logs out.)
+let sessionExpiredBusy = false;
+function handleSessionExpired() {
+  if (sessionExpiredBusy) return;
+  sessionExpiredBusy = true;
+  setTimeout(() => { sessionExpiredBusy = false; }, 1500);
+  token = null; me = null;
+  try { localStorage.removeItem('bos_token'); } catch (e) { /* ignore */ }
+  const inApp = !$('view-app').classList.contains('hidden') || !$('view-admin').classList.contains('hidden');
+  if (inApp) {
+    showView('view-login');
+    showErr('loginErr', tr('Session expired — please log in again.', 'Session ख़त्म हो गया — दोबारा login करो।', 'Session khatm ho gaya — dobara login karo.'));
+  }
 }
 
 function showErr(id, msg) { const e = $(id); if (!e) return; e.textContent = msg; e.style.display = 'block'; }
 function hideErr(id) { const e = $(id); if (e) e.style.display = 'none'; }
 function friendly(err) {
   const map = {
-    'invalid email or password': ['Wrong email or password.', 'ईमेल या पासवर्ड गलत है।', 'Email ya password galat hai.'],
+    'invalid email or password': ['Wrong email/mobile or password.', 'ईमेल/मोबाइल या पासवर्ड गलत है।', 'Email/mobile ya password galat hai.'],
+    'mobile_required': ['Enter your mobile number.', 'अपना मोबाइल नंबर डालो।', 'Apna mobile number daalo.'],
+    'invalid_mobile': ['That mobile number does not look right — enter a 10-digit number starting with 6, 7, 8 or 9.', 'मोबाइल नंबर सही नहीं लग रहा — 6, 7, 8 या 9 से शुरू होने वाला 10 अंकों का नंबर डालो।', 'Mobile number sahi nahi lag raha — 6, 7, 8 ya 9 se shuru hone wala 10 digit ka number daalo.'],
+    'mobile_taken': ['This mobile number is already registered with another account.', 'ये मोबाइल नंबर पहले से किसी और खाते पर registered है।', 'Ye mobile number pehle se kisi aur account par registered hai.'],
     'email already registered': ['This email is already registered. Log in instead.', 'ये ईमेल पहले से registered है। लॉगिन करो।', 'Ye email pehle se registered hai. Login karo.'],
     'password must be at least 6 characters': ['Password must be at least 6 characters.', 'पासवर्ड कम से कम 6 अक्षरों का हो।', 'Password kam se kam 6 character ka ho.'],
     'owner_only': ['Only the owner can do this.', 'ये सिर्फ़ owner कर सकता है।', 'Ye sirf owner kar sakta hai.'],
@@ -85,6 +129,16 @@ function friendly(err) {
     'link_not_found': ['This account link is off or wrong.', 'ये हिसाब लिंक बंद है या गलत है।', 'Ye hisaab link band hai ya galat hai.'],
     'shop_phone_missing': ['The shop phone number is not set in Settings — add it there first.', 'दुकान का फ़ोन नंबर Settings में नहीं है — पहले वहाँ नंबर भरो।', 'Dukaan ka phone number Settings me nahi hai — pehle wahan number bharo.'],
     'account_blocked': ['This account has been blocked by the DILIGENCE admin. Contact support.', 'ये खाता DILIGENCE admin ने block किया है — support से बात करो।', 'Ye khata DILIGENCE admin ne block kiya hai — support se baat karo.'],
+    'session_expired': ['Session expired — please log in again.', 'Session ख़त्म हो गया — दोबारा login करो।', 'Session khatm ho gaya — dobara login karo.'],
+    'too_many_attempts': ['Too many wrong attempts. Wait a few minutes, then try again.', 'बहुत ज़्यादा गलत कोशिशें — कुछ मिनट रुककर फिर कोशिश करो।', 'Bahut zyada galat koshish — kuch minute ruk kar phir try karo.'],
+    'workspace_not_setup': ['Your workspace is not set up yet — fill your shop details first.', 'तुम्हारा workspace अभी setup नहीं है — पहले दुकान की details भरो।', 'Tumhara workspace abhi setup nahi hai — pehle dukaan ki details bharo.'],
+    'shop_name_required': ['Enter your shop name (at least 3 letters).', 'दुकान का नाम डालो (कम से कम 3 अक्षर)।', 'Dukaan ka naam daalo (kam se kam 3 akshar).'],
+    'invalid_category': ['Pick your shop category.', 'दुकान की category चुनो।', 'Dukaan ki category chuno.'],
+    'address_required': ['Enter the full shop address.', 'दुकान का पूरा पता डालो।', 'Dukaan ka pura pata daalo.'],
+    'invalid_pincode': ['PIN code must be 6 digits.', 'PIN code 6 अंकों का होना चाहिए।', 'PIN code 6 digit ka hona chahiye.'],
+    'city_required': ['Enter your city.', 'अपना शहर डालो।', 'Apna sheher daalo.'],
+    'invalid_state': ['Pick your state from the list.', 'List से अपना राज्य चुनो।', 'List se apna rajya chuno.'],
+    'invalid_gstin': ['That GSTIN does not look right — check the 15 characters.', 'GSTIN सही नहीं लग रहा — 15 अक्षर जाँचो।', 'GSTIN sahi nahi lag raha — 15 character check karo.'],
     'last_owner': ['This shop must always keep at least one owner — make another user the owner first.', 'इस दुकान का कम से कम एक owner होना ज़रूरी है — पहले किसी और को owner बनाओ।', 'Is dukaan ka kam se kam ek owner hona zaroori hai — pehle kisi aur ko owner banao.'],
     'user_not_found': ['That user no longer exists.', 'वो user अब नहीं है।', 'Wo user ab nahi hai.'],
     'business_not_found': ['That shop no longer exists.', 'वो दुकान अब नहीं है।', 'Wo dukaan ab nahi hai.'],
@@ -136,7 +190,7 @@ async function setLanguage(lang) {
 
 // ---------- view switching ----------
 function showView(name) {
-  ['view-landing', 'view-login', 'view-signup', 'view-otp', 'view-forgot', 'view-admin', 'view-setup', 'view-app'].forEach((v) => $(v).classList.toggle('hidden', v !== name));
+  ['view-landing', 'view-login', 'view-signup', 'view-otp', 'view-forgot', 'view-admin', 'view-setup', 'view-welcome', 'view-app'].forEach((v) => $(v).classList.toggle('hidden', v !== name));
 }
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.remove('on'));
@@ -218,7 +272,7 @@ function applyNavLocks() {
 // the app's data-en/data-hi system. The choice is saved in localStorage
 // 'bos_lang' and also drives applyLang() so the auth screens follow.
 function landingDefaultLang() {
-  try { const s = localStorage.getItem('bos_lang'); return s ? normLang(s) : 'hg'; } catch (e) { return 'hg'; }
+  try { const s = localStorage.getItem('bos_lang'); return s ? normLang(s) : 'en'; } catch (e) { return 'en'; }
 }
 function applyLandingLang(lang) {
   lang = normLang(lang);
@@ -238,11 +292,9 @@ function showLanding() {
 function maybeIntro() {
   const ov = $('bzIntro');
   if (!ov) return;
-  let seen = false;
-  try { seen = !!sessionStorage.getItem('bizyour_intro_seen'); } catch (e) {}
-  if (seen) return;
+  // Founder's call (22 Nov 2026): the logo intro plays on EVERY landing
+  // load/refresh — no once-per-session gate. Click or Esc still skips it.
   if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  try { sessionStorage.setItem('bizyour_intro_seen', '1'); } catch (e) {}
   ov.classList.remove('hidden');
   document.body.classList.add('bz-intro-on');
   let done = false;
@@ -267,7 +319,7 @@ async function boot() {
   try {
     me = await api('GET', '/api/me');
     if (me.user.role === 'superadmin') { enterAdmin(); return; }
-    if (!me.business.setup_complete && me.user.role === 'owner') { openSetup(); return; }
+    if (!me.business.setup_complete) { openWelcome(); return; }
     await enterApp();
   } catch (e) {
     token = null; localStorage.removeItem('bos_token'); me = null;
@@ -275,14 +327,101 @@ async function boot() {
   }
 }
 
+// ---------- two-stage workflow: welcome + shop selects ----------
+// Shop categories (codes mirror SHOP_CATEGORIES in backend/server.js)
+// and the Indian states/UTs list (mirrors INDIAN_STATES there — the
+// server re-validates everything; these only fill the <select>s).
+const SHOP_CATEGORIES_UI = [
+  { code: 'kirana', en: 'Kirana / General Store', hi: 'किराना / जनरल स्टोर' },
+  { code: 'electronics', en: 'Electronics', hi: 'इलेक्ट्रॉनिक्स' },
+  { code: 'mobile', en: 'Mobile & Accessories', hi: 'मोबाइल और एक्सेसरीज़' },
+  { code: 'medical', en: 'Medical / Pharmacy', hi: 'मेडिकल / दवाई की दुकान' },
+  { code: 'garments', en: 'Garments / Clothing', hi: 'कपड़ों की दुकान' },
+  { code: 'food', en: 'Food / Restaurant / Bakery', hi: 'खाना / रेस्टोरेंट / बेकरी' },
+  { code: 'hardware', en: 'Hardware / Building Material', hi: 'हार्डवेयर / बिल्डिंग सामान' },
+  { code: 'beauty', en: 'Beauty / Salon / Cosmetics', hi: 'ब्यूटी / सैलून / कॉस्मेटिक्स' },
+  { code: 'services', en: 'Services / Repair', hi: 'सर्विस / रिपेयर' },
+  { code: 'other', en: 'Other', hi: 'अन्य' }
+];
+const INDIAN_STATES_UI = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya',
+  'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim',
+  'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand',
+  'West Bengal',
+  'Andaman and Nicobar Islands', 'Chandigarh',
+  'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+  'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
+];
+let shopSelectsFilled = false;
+function fillShopSelects() {
+  if (shopSelectsFilled) return;
+  shopSelectsFilled = true;
+  [['setupCategory', true], ['setCategory', false]].forEach(([id, withPrompt]) => {
+    const sel = $(id);
+    if (!sel) return;
+    sel.innerHTML = (withPrompt ? `<option value="" data-en="Pick a category…" data-hi="Category चुनो…">Pick a category…</option>` : '')
+      + SHOP_CATEGORIES_UI.map((c) => `<option value="${c.code}" data-en="${c.en}" data-hi="${c.hi}">${c.en}</option>`).join('');
+  });
+  [['setupState', true], ['setState', false]].forEach(([id, withPrompt]) => {
+    const sel = $(id);
+    if (!sel) return;
+    sel.innerHTML = (withPrompt ? `<option value="" data-en="Pick your state…" data-hi="राज्य चुनो…">Pick your state…</option>` : `<option value=""></option>`)
+      + INDIAN_STATES_UI.map((s) => `<option value="${s}">${s}</option>`).join('');
+  });
+}
+
+// The welcome / choice screen: account is ready, Mart is open, the
+// workspace waits for the shop details. Shown after login/verify when
+// the business is not workspace-active yet, and whenever a workspace
+// API answers workspace_not_setup (notice=true in that case).
+function openWelcome(notice) {
+  showView('view-welcome');
+  const err = $('welcomeErr');
+  if (notice) {
+    err.textContent = tr('Your workspace is not set up yet — fill your shop details first. Business Mart is open below.', 'तुम्हारा workspace अभी setup नहीं है — पहले दुकान की details भरो। Business Mart नीचे खुला है।', 'Tumhara workspace abhi setup nahi hai — pehle dukaan ki details bharo. Business Mart neeche khula hai.');
+    err.style.display = 'block';
+  } else err.style.display = 'none';
+  if (me && me.business) applyLang(me.business.language || 'en');
+}
+$('welcomeMartBtn').addEventListener('click', () => {
+  // Enter the app shell straight into the Mart — buyer features work
+  // on the account alone; workspace screens stay behind the setup.
+  showView('view-app');
+  renderShellBits();
+  const mb = $('modMart');
+  if (mb) mb.click();
+});
+$('welcomeSetupBtn').addEventListener('click', () => {
+  if (!me || me.user.role !== 'owner') {
+    const err = $('welcomeErr');
+    err.textContent = tr('Only the owner can set up the workspace — ask the owner to fill the shop details.', 'Workspace setup सिर्फ़ owner कर सकता है — owner से दुकान की details भरवाओ।', 'Workspace setup sirf owner kar sakta hai — owner se dukaan ki details bharwao.');
+    err.style.display = 'block';
+    return;
+  }
+  openSetup();
+});
+$('welcomeLogout').addEventListener('click', async () => {
+  try { await api('POST', '/api/auth/logout'); } catch (e) { /* ignore */ }
+  token = null; me = null; localStorage.removeItem('bos_token');
+  showLanding();
+});
+
 // ---------- setup ----------
 function openSetup() {
   showView('view-setup');
+  fillShopSelects();
   const b = me.business;
   $('setupOwner').value = b.owner_name || me.user.name;
   $('setupName').value = b.name || '';
   $('setupPhone').value = b.phone || '';
+  $('setupCategory').value = b.category || '';
+  $('setupAddress').value = b.address || '';
+  $('setupLandmark').value = b.landmark || '';
+  $('setupPincode').value = b.pincode || '';
   $('setupCity').value = b.city || '';
+  $('setupState').value = b.state || '';
   $('setupGst').checked = !!b.gst_enabled;
   $('setupGstin').value = b.gstin || '';
   $('setupGstinWrap').classList.toggle('hidden', !b.gst_enabled);
@@ -299,9 +438,15 @@ document.querySelectorAll('#view-setup .lang-card').forEach((c) => c.addEventLis
 $('setupForm').addEventListener('submit', async (e) => {
   e.preventDefault(); hideErr('setupErr');
   try {
-    const r = await api('PUT', '/api/business', {
+    // Two-stage workflow: the setup form ACTIVATES the workspace via
+    // its own endpoint — that stamp is also what starts the 30-day
+    // trial. (Settings keeps using PUT /api/business afterwards.)
+    const r = await api('POST', '/api/workspace/activate', {
       name: $('setupName').value, owner_name: $('setupOwner').value, phone: $('setupPhone').value,
-      city: $('setupCity').value, gst_enabled: $('setupGst').checked,
+      category: $('setupCategory').value, address: $('setupAddress').value,
+      landmark: $('setupLandmark').value, pincode: $('setupPincode').value,
+      city: $('setupCity').value, state: $('setupState').value,
+      gst_enabled: $('setupGst').checked,
       gstin: $('setupGst').checked ? $('setupGstin').value : '', language: setupLang
     });
     me.business = r.business;
@@ -324,12 +469,25 @@ function lpShowAuth(mode) {
 $('loginHome').addEventListener('click', () => { showLanding(); window.scrollTo(0, 0); });
 $('signupHome').addEventListener('click', () => { showLanding(); window.scrollTo(0, 0); });
 
+// Client-side mirror of the server's mobile rule (normalizeMobile in
+// server.js): strip spaces/dashes and a +91 / 91 prefix, then exactly
+// 10 digits starting 6-9. Returns the normalized number or null. The
+// server re-checks everything — this only saves a round trip.
+function validMobileClient(v) {
+  let d = String(v || '').replace(/[\s-]+/g, '');
+  if (d.startsWith('+91')) d = d.slice(3);
+  else if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+  return /^[6-9]\d{9}$/.test(d) ? d : null;
+}
+
 $('signupForm').addEventListener('submit', async (e) => {
   e.preventDefault(); hideErr('signupErr');
+  const mob = validMobileClient($('suMobile').value);
+  if (!mob) { showErr('signupErr', friendly(new Error('invalid_mobile'))); return; }
   try {
     // SaaS Stage 2: signup no longer logs in directly — it creates a
     // PENDING account and emails an OTP. Verification starts the trial.
-    const r = await api('POST', '/api/auth/signup', { name: $('suName').value, email: $('suEmail').value, password: $('suPass').value });
+    const r = await api('POST', '/api/auth/signup', { name: $('suName').value, email: $('suEmail').value, mobile: mob, password: $('suPass').value });
     openOtpView(r.email || $('suEmail').value.trim(), r.mail_configured);
   } catch (err) {
     if (err.message === 'email_pending_verification') {
@@ -342,13 +500,22 @@ $('signupForm').addEventListener('submit', async (e) => {
 $('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault(); hideErr('loginErr');
   try {
-    const r = await api('POST', '/api/auth/login', { email: $('loginEmail').value, password: $('loginPass').value });
+    // The identifier field takes an email OR a mobile number — the
+    // server works out which from the '@'.
+    const r = await api('POST', '/api/auth/login', { identifier: $('loginEmail').value, password: $('loginPass').value });
     token = r.token; localStorage.setItem('bos_token', token);
     me = { user: r.user, business: r.business };
     if (me.user.role === 'superadmin') { enterAdmin(); return; }
-    if (!me.business.setup_complete && me.user.role === 'owner') openSetup(); else await enterApp();
+    if (!me.business.setup_complete) openWelcome(); else await enterApp();
   } catch (err) {
-    if (err.message === 'email_not_verified') {
+    if (err.message === 'too_many_attempts') {
+      const mins = (err.data && err.data.retry_after_min) || 15;
+      showErr('loginErr', tr(`Too many wrong attempts. Try again after ${mins} minute(s).`, `बहुत ज़्यादा गलत कोशिशें — ${mins} मिनट बाद फिर कोशिश करो।`, `Bahut zyada galat koshish — ${mins} minute baad phir try karo.`));
+      return;
+    }
+    // The OTP view is keyed by email — only route there when the user
+    // actually typed an email; a mobile identifier just gets the note.
+    if (err.message === 'email_not_verified' && $('loginEmail').value.includes('@')) {
       openOtpView($('loginEmail').value.trim(), undefined);
       showErr('otpErr', friendly(err));
     } else showErr('loginErr', friendly(err));
@@ -376,7 +543,7 @@ $('otpForm').addEventListener('submit', async (e) => {
     const r = await api('POST', '/api/auth/verify-otp', { email: otpEmail, otp: $('otpCode').value.trim() });
     token = r.token; localStorage.setItem('bos_token', token);
     me = { user: r.user, business: r.business };
-    if (!me.business.setup_complete && me.user.role === 'owner') openSetup(); else await enterApp();
+    if (!me.business.setup_complete) openWelcome(); else await enterApp();
   } catch (err) { showErr('otpErr', friendly(err)); }
 });
 $('otpResend').addEventListener('click', async () => {
@@ -575,11 +742,18 @@ async function runGlobalSearch(q) {
 // ---------- settings ----------
 function fillSettings() {
   if (!me) return;
+  fillShopSelects();
   const b = me.business;
   $('setName').value = b.name || '';
   $('setOwner').value = b.owner_name || '';
   $('setPhone').value = b.phone || '';
   $('setCity').value = b.city || '';
+  $('setCategory').value = b.category || '';
+  $('setAddress').value = b.address || '';
+  $('setLandmark').value = b.landmark || '';
+  $('setPincode').value = b.pincode || '';
+  $('setState').value = b.state || '';
+  $('setMobile').value = (me.user && me.user.mobile) || '';
   $('setGst').checked = !!b.gst_enabled;
   $('setGstin').value = b.gstin || '';
   $('setGstinWrap').classList.toggle('hidden', !b.gst_enabled);
@@ -590,7 +764,7 @@ function fillSettings() {
   setLangSel = b.language || 'en';
   ['en', 'hi', 'hg'].forEach((l) => { const c = $('setLang' + l[0].toUpperCase() + l[1]); if (c) c.classList.toggle('sel', setLangSel === l); });
   const owner = me.user.role === 'owner';
-  ['setName', 'setOwner', 'setPhone', 'setCity', 'setGst', 'setGstin', 'setUpiId', 'setUpiName'].forEach((id) => { $(id).disabled = !owner; });
+  ['setName', 'setOwner', 'setPhone', 'setCity', 'setCategory', 'setAddress', 'setLandmark', 'setPincode', 'setState', 'setMobile', 'setGst', 'setGstin', 'setUpiId', 'setUpiName'].forEach((id) => { $(id).disabled = !owner; });
   $('setQrFile').disabled = !owner;
   $('setSaveBtn').disabled = !owner;
   $('staffReadonlyNote').classList.toggle('hidden', owner);
@@ -642,16 +816,31 @@ $('setQrRemove').addEventListener('click', () => {
 
 $('settingsForm').addEventListener('submit', async (e) => {
   e.preventDefault(); hideErr('setErr'); $('setOk').style.display = 'none';
+  // Login mobile lives on the USER (not the business), so it is checked
+  // here first and saved through its own route after the business save.
+  const mobRaw = $('setMobile').value.trim();
+  const mobChanged = mobRaw !== ((me.user && me.user.mobile) || '');
+  let mobNorm = null;
+  if (mobChanged && mobRaw !== '') {
+    mobNorm = validMobileClient(mobRaw);
+    if (!mobNorm) { showErr('setErr', friendly(new Error('invalid_mobile'))); return; }
+  }
   try {
     const body = {
       name: $('setName').value, owner_name: $('setOwner').value, phone: $('setPhone').value,
-      city: $('setCity').value, gst_enabled: $('setGst').checked,
+      city: $('setCity').value, category: $('setCategory').value, address: $('setAddress').value,
+      landmark: $('setLandmark').value, pincode: $('setPincode').value, state: $('setState').value,
+      gst_enabled: $('setGst').checked,
       gstin: $('setGst').checked ? $('setGstin').value : '', language: setLangSel,
       upi_id: $('setUpiId').value, upi_payee_name: $('setUpiName').value
     };
     if (paymentQrState.touched) body.payment_qr = paymentQrState.value;
     const r = await api('PUT', '/api/business', body);
     me.business = r.business;
+    if (mobChanged) {
+      const mr = await api('PUT', '/api/auth/mobile', { mobile: mobRaw === '' ? '' : mobNorm });
+      me.user = mr.user;
+    }
     renderShellBits(); fillSettings();
     const ok = $('setOk');
     ok.textContent = tr("Settings saved ✓", "सेटिंग सेव हो गई ✓");
@@ -702,7 +891,8 @@ $('staffForm').addEventListener('submit', async (e) => {
 const subStatusLabel = {
   trial: ['Free trial', 'Free trial'], active: ['Active', 'चालू'],
   grace: ['Grace period', 'Grace period'], expired: ['Expired — read-only', 'ख़त्म — सिर्फ़ देख सकते हो'],
-  blocked: ['Blocked — read-only', 'Blocked — सिर्फ़ देख सकते हो']
+  blocked: ['Blocked — read-only', 'Blocked — सिर्फ़ देख सकते हो'],
+  none: ['Not started — set up your shop first', 'शुरू नहीं — पहले दुकान setup करो']
 };
 function fmtDateOnly(ts) { return ts ? String(ts).slice(0, 10) : '—'; }
 
@@ -714,8 +904,62 @@ async function loadSubscription() {
     subCache = r;
     renderSubBanner(r.subscription);
     renderSubCard(r);
+    // Subscription lock (2026-11-22): an expired/blocked subscription
+    // LOCKS the workspace — it never logs the user out. When the state
+    // comes back active (payment approved), the lock lifts and the
+    // current view refreshes in place — same session, same screen.
+    if (r.subscription.read_only) showSubLock(false);
+    else if (subLocked) { hideSubLock(); refreshCurrentView(); }
   } catch (e) { /* banner/card simply stay as-is */ }
 }
+
+// ---------- subscription lock screen ----------
+// withOverlay=true (a write just hit 403 subscription_expired, or first
+// entry into the locked state) → the full lock screen shows. Otherwise
+// only the state is recorded (the red banner from renderSubBanner
+// stays visible) so a dismissed lock does not keep popping up.
+function showSubLock(withOverlay) {
+  const wasLocked = subLocked;
+  subLocked = true;
+  const ov = $('subLock');
+  if (!ov) return;
+  $('subLockTitle').textContent = tr('Trial / plan khatm ho gaya', 'ट्रायल / प्लान ख़त्म हो गया', 'Trial / plan khatm ho gaya');
+  $('subLockText').textContent = tr(
+    'Your data is completely safe. Pay and continue right from where you stopped — no logout, no setup again.',
+    'आपका डेटा पूरी तरह सुरक्षित है। Payment करके वहीं से दोबारा शुरू करो — कोई logout नहीं, कोई दोबारा setup नहीं।',
+    'Aapka data bilkul safe hai. Payment karke wahi se dobara shuru karo — koi logout nahi, koi dobara setup nahi.');
+  const owner = !!(me && me.user.role === 'owner');
+  $('subLockRenew').classList.toggle('hidden', !owner);
+  $('subLockRenew').textContent = tr('💳 See plans & renew', '💳 Plan dekho, renew karo', '💳 Plan dekho, renew karo');
+  $('subLockPeek').textContent = owner
+    ? tr('Just look at my data', 'सिर्फ़ डेटा देखो', 'Sirf data dekho')
+    : tr('OK — just look at the data', 'ठीक है — सिर्फ़ डेटा देखो', 'Thik hai — sirf data dekho');
+  if (withOverlay || !wasLocked) ov.classList.remove('hidden');
+}
+function hideSubLock() {
+  subLocked = false;
+  const ov = $('subLock');
+  if (ov) ov.classList.add('hidden');
+}
+// Re-run whatever the user is looking at (workspace screen or Mart
+// view) so an unlocked app continues exactly where it stopped.
+function refreshCurrentView() {
+  const martOn = $('screen-mart') && $('screen-mart').classList.contains('on');
+  if (martOn && typeof window.BOS_martRefresh === 'function') { window.BOS_martRefresh(); return; }
+  const active = document.querySelector('#nav .nav-item.active');
+  if (active) active.click();
+  else if (typeof loadSubscription === 'function') loadSubscription();
+}
+$('subLockRenew').addEventListener('click', () => {
+  $('subLock').classList.add('hidden'); // state stays locked; the banner remains
+  gotoScreen('settings');
+  loadSubscription();
+  setTimeout(() => { const c = $('subCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+});
+$('subLockPeek').addEventListener('click', () => { $('subLock').classList.add('hidden'); });
+// While locked, quietly re-check every 30s (owner): the moment the
+// payment is approved in the admin panel, the lock lifts by itself.
+setInterval(() => { if (subLocked && token && me && me.user.role === 'owner') loadSubscription(); }, 30000);
 function renderSubBanner(s) {
   const b = $('subBanner');
   if (!b) return;
@@ -733,7 +977,7 @@ function renderSubBanner(s) {
     msg = tr(`⚠️ Your plan has ended — grace period is running. Renew soon or the app becomes read-only. Settings → Subscription & plan.`, `⚠️ Plan ख़त्म हो गया है — grace period चल रहा है। Renew न किया तो app सिर्फ़ देखने के लिए रह जाएगा। Settings → Subscription & plan।`, `⚠️ Plan khatam ho gaya hai — grace period chal raha hai. Jaldi renew karo warna app sirf dekhne ke liye reh jayega. Settings → Subscription & plan.`);
   } else if (s.read_only) {
     show = true; bg = '#fdecea';
-    msg = tr(`🔒 Subscription ended — the app is read-only. You can see old data but cannot add new bills. Renew: Settings → Subscription & plan.`, `🔒 Subscription ख़त्म — app read-only है। पुराना data देख सकते हो, नया bill नहीं बनेगा। Renew: Settings → Subscription & plan।`, `🔒 Subscription khatam — app read-only hai. Purana data dekh sakte ho, naya bill nahi banega. Renew: Settings → Subscription & plan.`);
+    msg = tr(`🔒 Trial/plan khatm ho gaya — your data is safe. The workspace is locked (you can see everything, add nothing). Pay and continue right from where you stopped: Settings → Subscription & plan.`, `🔒 Trial/plan ख़त्म हो गया — तुम्हारा data safe है। Workspace lock है (सब देख सकते हो, कुछ जोड़ नहीं सकते)। Payment करके वहीं से दोबारा शुरू करो: Settings → Subscription & plan।`, `🔒 Trial/plan khatm ho gaya — aapka data safe hai. Workspace lock hai (sab dekh sakte ho, kuch jod nahi sakte). Payment karke wahi se dobara shuru karo: Settings → Subscription & plan.`);
   }
   b.classList.toggle('hidden', !show);
   if (show) { b.style.background = bg; b.textContent = msg; }
@@ -1055,7 +1299,7 @@ function admToast(msg, ok = true) {
 // Promise-based confirm dialog. typeName (a shop's name) turns it into
 // the type-to-confirm variant used for permanent deletes.
 function admConfirm(opts) {
-  const { title, body, okText = 'Confirm', typeName = null } = opts || {};
+  const { title, body, okText = 'Confirm', typeName = null, typeKind = 'name' } = opts || {};
   return new Promise((resolve) => {
     const wrap = $('admModal');
     if (!wrap) { resolve(window.confirm(title + '\n' + body)); return; }
@@ -1071,7 +1315,9 @@ function admConfirm(opts) {
     const typeInput = $('admModalTypeInput');
     if (typeName) {
       typeWrap.classList.remove('hidden');
-      $('admModalTypeLabel').textContent = `Pakka karne ke liye dukaan ka naam likho: ${typeName}`;
+      $('admModalTypeLabel').textContent = typeKind === 'id'
+        ? `Pakka karne ke liye dukaan ka number likho: ${typeName}`
+        : `Pakka karne ke liye dukaan ka naam likho: ${typeName}`;
       typeInput.value = '';
       okBtn.disabled = true;
     } else {
@@ -1593,9 +1839,12 @@ function renderAdmBiz() {
       const shopName = b.name || '';
       const yes = await admConfirm({
         title: 'Delete this shop forever?',
-        body: `"${shopName || '(no name set)'}" aur uska SARA data — users, products, bills, stock, sab kuch — hamesha ke liye delete ho jayega. Ye wapas nahi aayega.`,
+        body: shopName
+          ? `"${shopName}" aur uska SARA data — users, products, bills, stock, sab kuch — hamesha ke liye delete ho jayega. Ye wapas nahi aayega.`
+          : `Shop #${b.id} (naam set nahi hai${b.owner_email ? `, owner: ${b.owner_email}` : ''}) aur uska SARA data — users, products, bills, stock, sab kuch — hamesha ke liye delete ho jayega. Ye wapas nahi aayega.`,
         okText: 'Delete forever',
-        typeName: shopName || String(b.id)
+        typeName: shopName || String(b.id),
+        typeKind: shopName ? 'name' : 'id'
       });
       if (!yes) return;
       if (admDetailFor === b.id) closeAdmDetail();
