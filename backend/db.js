@@ -58,6 +58,12 @@ const SCHEMA_SQL = `
     owner_name TEXT NOT NULL DEFAULT '',
     phone TEXT NOT NULL DEFAULT '',
     city TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    landmark TEXT NOT NULL DEFAULT '',
+    pincode TEXT NOT NULL DEFAULT '',
+    state TEXT NOT NULL DEFAULT '',
+    workspace_activated_at TEXT,
     gst_enabled INTEGER NOT NULL DEFAULT 0,
     gstin TEXT NOT NULL DEFAULT '',
     upi_id TEXT NOT NULL DEFAULT '',
@@ -74,6 +80,7 @@ const SCHEMA_SQL = `
     business_id INTEGER NOT NULL REFERENCES businesses(id),
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
+    mobile TEXT,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'staff' CHECK (role IN ('owner','staff')),
     access TEXT NOT NULL DEFAULT 'all' CHECK (access IN ('all','billing','stock')),
@@ -86,7 +93,8 @@ const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT
   );
 
   CREATE INDEX IF NOT EXISTS idx_users_business ON users(business_id);
@@ -411,7 +419,26 @@ const SCHEMA_SQL = `
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     token TEXT NOT NULL UNIQUE,
     admin_id INTEGER NOT NULL REFERENCES platform_admins(id),
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT
+  );
+
+  -- ===== Session-expiry + login-lockout + workspace workflow (2026-11-22) =====
+  -- login_attempts: per-identifier / per-IP failed-login counters with a
+  -- lockout stamp (platform table — no business_id, never in backups).
+  -- app_migrations: one-time data migrations are recorded here so they
+  -- run exactly once per database (e.g. the workspace_activated_at
+  -- backfill for pre-existing named shops).
+  CREATE TABLE IF NOT EXISTS login_attempts (
+    key TEXT PRIMARY KEY,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until TEXT,
+    last_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS app_migrations (
+    name TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS plans (
@@ -744,7 +771,7 @@ const PG_SCHEMA_SQL = SCHEMA_SQL
   .replace(/\s+REFERENCES\s+\w+\(id\)/g, '');
 
 // ---------- SQL translation for Postgres ----------
-const NO_ID_TABLES = new Set(['sessions']); // tables whose PK is not `id`
+const NO_ID_TABLES = new Set(['sessions', 'login_attempts', 'app_migrations']); // tables whose PK is not `id`
 function translatePg(sql) {
   let out = '';
   let n = 0;
@@ -910,6 +937,13 @@ async function init() {
     // gain a blocked flag; existing users stay unblocked (0).
     const userCols = sdb.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
     if (!userCols.includes('blocked')) sdb.exec("ALTER TABLE users ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0");
+    // Mobile-login migration (same idempotent pattern): users gain a
+    // nullable login mobile (normalized 10-digit, set at signup or later
+    // from Settings). Existing users stay NULL — a UNIQUE index still
+    // allows any number of NULLs in SQLite, so old rows never collide;
+    // the index only stops two accounts sharing one real number.
+    if (!userCols.includes('mobile')) sdb.exec("ALTER TABLE users ADD COLUMN mobile TEXT");
+    sdb.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile)");
     if (!invCols.includes('due_date')) sdb.exec("ALTER TABLE invoices ADD COLUMN due_date TEXT");
     if (!purCols.includes('due_date')) sdb.exec("ALTER TABLE purchases ADD COLUMN due_date TEXT");
     // Bill edit/cancel migration (same idempotent pattern): a cancelled
@@ -963,6 +997,37 @@ async function init() {
     if (!miCols.includes('group_id')) sdb.exec("ALTER TABLE mart_inquiries ADD COLUMN group_id TEXT");
     const mlCols = sdb.prepare('PRAGMA table_info(mart_listings)').all().map((c) => c.name);
     if (!mlCols.includes('photo')) sdb.exec("ALTER TABLE mart_listings ADD COLUMN photo TEXT");
+    // Session-expiry migration (same idempotent pattern): sessions and
+    // admin_sessions gain a nullable expires_at. Rows that already exist
+    // are backfilled to created_at + 30 days so NOBODY is logged out by
+    // this deploy — the 30-day clock for old logins simply starts from
+    // when they logged in.
+    const sessCols = sdb.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
+    if (!sessCols.includes('expires_at')) sdb.exec("ALTER TABLE sessions ADD COLUMN expires_at TEXT");
+    sdb.exec("UPDATE sessions SET expires_at = datetime(created_at, '+30 days') WHERE expires_at IS NULL");
+    const aSessCols = sdb.prepare('PRAGMA table_info(admin_sessions)').all().map((c) => c.name);
+    if (!aSessCols.includes('expires_at')) sdb.exec("ALTER TABLE admin_sessions ADD COLUMN expires_at TEXT");
+    sdb.exec("UPDATE admin_sessions SET expires_at = datetime(created_at, '+30 days') WHERE expires_at IS NULL");
+    // Workspace-workflow migration (same idempotent pattern): businesses
+    // gain the shop-setup fields (category / full address / PIN / state)
+    // and the workspace_activated_at stamp. All empty/NULL on old rows —
+    // the one-time backfill below stamps the shops that already exist.
+    if (!bizCols.includes('category')) sdb.exec("ALTER TABLE businesses ADD COLUMN category TEXT NOT NULL DEFAULT ''");
+    if (!bizCols.includes('address')) sdb.exec("ALTER TABLE businesses ADD COLUMN address TEXT NOT NULL DEFAULT ''");
+    if (!bizCols.includes('landmark')) sdb.exec("ALTER TABLE businesses ADD COLUMN landmark TEXT NOT NULL DEFAULT ''");
+    if (!bizCols.includes('pincode')) sdb.exec("ALTER TABLE businesses ADD COLUMN pincode TEXT NOT NULL DEFAULT ''");
+    if (!bizCols.includes('state')) sdb.exec("ALTER TABLE businesses ADD COLUMN state TEXT NOT NULL DEFAULT ''");
+    if (!bizCols.includes('workspace_activated_at')) sdb.exec("ALTER TABLE businesses ADD COLUMN workspace_activated_at TEXT");
+    // ONE-TIME backfill (app_migrations marker): every pre-existing shop
+    // that already has a name was set up under the old flow — stamp its
+    // workspace as activated from its creation date so nothing about its
+    // access changes. Account-only businesses (name still '') stay
+    // un-activated, exactly as the two-stage workflow intends.
+    const wsMark = sdb.prepare("SELECT name FROM app_migrations WHERE name = 'ws_backfill_v1'").get();
+    if (!wsMark) {
+      sdb.exec("UPDATE businesses SET workspace_activated_at = created_at WHERE name <> '' AND workspace_activated_at IS NULL");
+      sdb.exec("INSERT INTO app_migrations (name) VALUES ('ws_backfill_v1')");
+    }
     layer = sqliteLayer();
   } else {
     const { Pool, types } = require('pg');
@@ -1000,6 +1065,11 @@ async function init() {
       // Admin Panel upgrade migration (same as the SQLite branch): users
       // gain the per-user blocked flag; existing users stay unblocked.
       await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked INTEGER NOT NULL DEFAULT 0");
+      // Mobile-login migration (same as the SQLite branch): nullable
+      // login mobile on users; existing rows stay NULL (Postgres unique
+      // indexes allow multiple NULLs, exactly like SQLite).
+      await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile TEXT");
+      await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile)");
       await client.query("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS due_date TEXT");
       await client.query("ALTER TABLE purchases ADD COLUMN IF NOT EXISTS due_date TEXT");
       // Bill edit/cancel migration (same as the SQLite branch): nullable
@@ -1025,6 +1095,26 @@ async function init() {
       await client.query("ALTER TABLE mart_orders ADD COLUMN IF NOT EXISTS transporter_name TEXT NOT NULL DEFAULT ''");
       await client.query("ALTER TABLE mart_inquiries ADD COLUMN IF NOT EXISTS group_id TEXT");
       await client.query("ALTER TABLE mart_listings ADD COLUMN IF NOT EXISTS photo TEXT");
+      // Session-expiry migration (same as the SQLite branch): nullable
+      // expires_at on both session tables; existing rows backfilled to
+      // created_at + 30 days so nobody is logged out by this deploy.
+      await client.query("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS expires_at TEXT");
+      await client.query("UPDATE sessions SET expires_at = to_char(created_at::timestamp + interval '30 days', 'YYYY-MM-DD HH24:MI:SS') WHERE expires_at IS NULL");
+      await client.query("ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS expires_at TEXT");
+      await client.query("UPDATE admin_sessions SET expires_at = to_char(created_at::timestamp + interval '30 days', 'YYYY-MM-DD HH24:MI:SS') WHERE expires_at IS NULL");
+      // Workspace-workflow migration (same as the SQLite branch).
+      await client.query("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT ''");
+      await client.query("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS address TEXT NOT NULL DEFAULT ''");
+      await client.query("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS landmark TEXT NOT NULL DEFAULT ''");
+      await client.query("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS pincode TEXT NOT NULL DEFAULT ''");
+      await client.query("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT ''");
+      await client.query("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS workspace_activated_at TEXT");
+      // ONE-TIME backfill (app_migrations marker) — see the SQLite branch.
+      const wsMark = await client.query("SELECT name FROM app_migrations WHERE name = 'ws_backfill_v1'");
+      if (!wsMark.rows.length) {
+        await client.query("UPDATE businesses SET workspace_activated_at = created_at WHERE name <> '' AND workspace_activated_at IS NULL");
+        await client.query("INSERT INTO app_migrations (name) VALUES ('ws_backfill_v1')");
+      }
     } finally { client.release(); }
     layer = pgLayer();
   }
