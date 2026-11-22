@@ -289,6 +289,13 @@
     </div>
   </section>
 
+  <!-- Brand band — fixed English in every site language (founder's call). -->
+  <section class="lp-band">
+    <div class="lp-band-eyebrow">TEAM DILIGENCE</div>
+    <div class="lp-band-title">Proudly Built by <span class="lp-band-grad">IITians</span></div>
+    <p class="lp-band-sub">BizYour is not a faceless corporate product. It is built, line by line, by Team <b>DILIGENCE</b> — IITians who understand how India's shops actually run.</p>
+  </section>
+
   <footer class="lp-footer">
     <div class="lp-wrap">
       <div class="lp-foot-grid">
@@ -332,7 +339,7 @@
     <div class="hint" data-en="Log in to your business." data-hi="अपने बिज़नेस में लॉगिन करो।">Log in to your business.</div>
     <div class="err" id="loginErr"></div>
     <form id="loginForm">
-      <div class="field"><label>Email</label><input class="input" id="loginEmail" type="email" required autocomplete="email"></div>
+      <div class="field"><label data-en="Email or mobile number" data-hi="ईमेल या मोबाइल नंबर">Email or mobile number</label><input class="input" id="loginEmail" type="text" required autocomplete="username" data-en-ph="Email or mobile number" data-hi-ph="ईमेल या मोबाइल नंबर" placeholder="Email or mobile number"></div>
       <div class="field"><label data-en="Password" data-hi="पासवर्ड">Password</label><input class="input" id="loginPass" type="password" required autocomplete="current-password"></div>
       <button class="btn btn-blue big-btn" type="submit" data-en="Log in" data-hi="लॉगिन">Log in</button>
     </form>
@@ -533,6 +540,7 @@
     <form id="signupForm">
       <div class="field"><label data-en="Your name" data-hi="तुम्हारा नाम">Your name</label><input class="input" id="suName" required autocomplete="name"></div>
       <div class="field"><label>Email</label><input class="input" id="suEmail" type="email" required autocomplete="email"></div>
+      <div class="field"><label data-en="Mobile number" data-hi="मोबाइल नंबर">Mobile number</label><input class="input" id="suMobile" type="tel" inputmode="numeric" autocomplete="tel" required placeholder="+91 98765 43210"><div class="hint" data-en="10-digit mobile number. You can also log in with this number." data-hi="10 अंकों का मोबाइल नंबर। इस नंबर से भी लॉगिन कर सकते हो।">10 digit ka mobile number. Is number se bhi login kar sakte ho.</div></div>
       <div class="field"><label data-en="Password (min 6 characters)" data-hi="पासवर्ड (कम से कम 6 अक्षर)">Password (min 6 characters)</label><input class="input" id="suPass" type="password" required minlength="6" autocomplete="new-password"></div>
       <button class="btn btn-blue big-btn" type="submit" data-en="Create account" data-hi="खाता बनाओ">Create account</button>
     </form>
@@ -552,9 +560,18 @@
       <div class="field"><label data-en="Business / shop name *" data-hi="बिज़नेस / दुकान का नाम *">Business / shop name *</label><input class="input" id="setupName" required placeholder="e.g. Sharma General Store"></div>
       <div class="row2">
         <div class="field"><label data-en="Owner name" data-hi="मालिक का नाम">Owner name</label><input class="input" id="setupOwner"></div>
-        <div class="field"><label data-en="Phone" data-hi="फ़ोन">Phone</label><input class="input" id="setupPhone" inputmode="tel"></div>
+        <div class="field"><label data-en="Shop WhatsApp number *" data-hi="दुकान का WhatsApp नंबर *">Shop WhatsApp number *</label><input class="input" id="setupPhone" inputmode="tel" placeholder="10-digit mobile"></div>
       </div>
-      <div class="field"><label data-en="City" data-hi="शहर">City</label><input class="input" id="setupCity"></div>
+      <div class="field"><label data-en="Shop category *" data-hi="दुकान की category *">Shop category *</label><select class="input" id="setupCategory"></select></div>
+      <div class="field"><label data-en="Shop address *" data-hi="दुकान का पता *">Shop address *</label><input class="input" id="setupAddress" placeholder="Shop no., street, area"></div>
+      <div class="row2">
+        <div class="field"><label data-en="Landmark (optional)" data-hi="पास की पहचान (optional)">Landmark (optional)</label><input class="input" id="setupLandmark" placeholder="Near…"></div>
+        <div class="field"><label data-en="PIN code *" data-hi="PIN code *">PIN code *</label><input class="input" id="setupPincode" inputmode="numeric" maxlength="6" placeholder="110001"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label data-en="City *" data-hi="शहर *">City *</label><input class="input" id="setupCity"></div>
+        <div class="field"><label data-en="State *" data-hi="राज्य *">State *</label><select class="input" id="setupState"></select></div>
+      </div>
       <div class="tgl-row">
         <div class="t-txt"><b data-en="GST billing" data-hi="GST बिलिंग">GST billing</b><span data-en="Turn ON if your business makes GST bills." data-hi="ON करो अगर तुम्हारा बिज़नेस GST बिल बनाता है।">Turn ON if your business makes GST bills.</span></div>
         <label class="switch"><input type="checkbox" id="setupGst"><span class="slider"></span></label>
@@ -568,6 +585,31 @@
       </div>
       <button class="btn btn-blue big-btn" type="submit" data-en="Save &amp; start →" data-hi="सेव करो और शुरू करो →">Save & start →</button>
     </form>
+  </div>
+</div>
+
+<!-- ================= WELCOME (two-stage workflow: account ready, workspace pending) ================= -->
+<div id="view-welcome" class="center-wrap hidden">
+  <div class="auth-card wide">
+    <div class="auth-logo"><img class="logo-mark" src="brand/bizyour-mark-512.png" alt=""><div><b class="wordmark">Biz<span class="os">Your</span></b><span>by DILIGENCE</span></div></div>
+    <h2 data-en="Your account is ready 🎉" data-hi="तुम्हारा खाता तैयार है 🎉">Your account is ready 🎉</h2>
+    <div class="hint" data-en="Business Mart is open for you right now. Your Workspace (billing, udhaar, reports) unlocks once you fill your shop details — one minute only." data-hi="Business Mart तुम्हारे लिए अभी खुला है। Workspace (billing, उधार, reports) दुकान की details भरते ही खुलेगा — सिर्फ़ एक मिनट लगेगा।">Business Mart is open for you right now. Your Workspace unlocks once you fill your shop details.</div>
+    <div class="err" id="welcomeErr" style="display:none"></div>
+    <div class="ws-cards">
+      <div class="ws-card">
+        <div class="ws-ic">🛒</div>
+        <b data-en="Business Mart" data-hi="बिज़नेस मार्ट">Business Mart</b>
+        <span data-en="Open the bazaar — start buying from wholesalers near you." data-hi="बाज़ार खोलो — आस-पास के wholesalers से खरीदारी शुरू करो।">Open the bazaar — start buying.</span>
+        <button class="btn btn-blue" type="button" id="welcomeMartBtn" data-en="Open Business Mart →" data-hi="Business Mart खोलो →">Open Business Mart →</button>
+      </div>
+      <div class="ws-card">
+        <div class="ws-ic">🗂️</div>
+        <b data-en="Workspace" data-hi="वर्कस्पेस">Workspace</b>
+        <span data-en="Fill your shop details to start billing, udhaar and reports. Your 30-day free trial starts here." data-hi="दुकान की details भरो और billing, उधार व reports शुरू करो। 30 दिन का free trial यहीं से शुरू होगा।">Fill your shop details to start billing.</span>
+        <button class="btn btn-blue" type="button" id="welcomeSetupBtn" data-en="Fill shop details →" data-hi="दुकान की details भरो →">Fill shop details →</button>
+      </div>
+    </div>
+    <div class="switch-line"><a id="welcomeLogout" data-en="Log out" data-hi="लॉगआउट">Log out</a></div>
   </div>
 </div>
 
@@ -1527,7 +1569,17 @@
             <div class="field"><label data-en="Owner name" data-hi="मालिक का नाम">Owner name</label><input class="input" id="setOwner"></div>
             <div class="field"><label data-en="Phone" data-hi="फ़ोन">Phone</label><input class="input" id="setPhone" inputmode="tel"></div>
           </div>
-          <div class="field"><label data-en="City" data-hi="शहर">City</label><input class="input" id="setCity"></div>
+          <div class="row2">
+            <div class="field"><label data-en="City" data-hi="शहर">City</label><input class="input" id="setCity"></div>
+            <div class="field"><label data-en="Shop category" data-hi="दुकान की category">Shop category</label><select class="input" id="setCategory"></select></div>
+          </div>
+          <div class="field"><label data-en="Shop address" data-hi="दुकान का पता">Shop address</label><input class="input" id="setAddress" placeholder="Shop no., street, area"></div>
+          <div class="row2">
+            <div class="field"><label data-en="Landmark (optional)" data-hi="पास की पहचान (optional)">Landmark (optional)</label><input class="input" id="setLandmark" placeholder="Near…"></div>
+            <div class="field"><label data-en="PIN code" data-hi="PIN code">PIN code</label><input class="input" id="setPincode" inputmode="numeric" maxlength="6" placeholder="110001"></div>
+          </div>
+          <div class="field"><label data-en="State" data-hi="राज्य">State</label><select class="input" id="setState"></select></div>
+          <div class="field"><label data-en="Login mobile number" data-hi="लॉगिन मोबाइल नंबर">Login mobile number</label><input class="input" id="setMobile" type="tel" inputmode="numeric" autocomplete="tel" placeholder="+91 98765 43210"><div class="hint" data-en="Your login mobile — you can log in with this number or your email. Only you can change it." data-hi="तुम्हारा लॉगिन मोबाइल — इस नंबर या ईमेल, दोनों से लॉगिन होगा। इसे सिर्फ़ तुम बदल सकते हो।">Tumhara login mobile — is number ya email, dono se login hoga. Ise sirf tum badal sakte ho.</div></div>
           <div class="tgl-row">
             <div class="t-txt"><b data-en="GST billing" data-hi="GST बिलिंग">GST billing</b><span data-en="Turn ON if your business makes GST bills." data-hi="ON करो अगर तुम्हारा बिज़नेस GST बिल बनाता है।">Turn ON if your business makes GST bills.</span></div>
             <label class="switch"><input type="checkbox" id="setGst"><span class="slider"></span></label>
@@ -1732,6 +1784,19 @@
 <!-- Business Mart modal + toasts -->
 <div id="mkOverlay" class="mk-ov hidden"><div class="mk-modal" id="mkModal"></div></div>
 <div id="mkToasts" class="mk-toasts"></div>
+
+<!-- Subscription lock (trial/plan over): the user is NEVER logged out —
+     the workspace locks, data stays visible, payment reopens everything
+     right where they stopped. Shown by app.js (showSubLock). -->
+<div id="subLock" class="sub-lock hidden">
+  <div class="sub-lock-card">
+    <div class="sub-lock-ic">🔒</div>
+    <h2 id="subLockTitle">Trial / plan khatm ho gaya</h2>
+    <p id="subLockText">Aapka data bilkul safe hai. Payment karke wahi se dobara shuru karo.</p>
+    <button class="btn btn-blue big-btn" type="button" id="subLockRenew">💳 See plans &amp; renew</button>
+    <button class="btn btn-ghost" type="button" id="subLockPeek" style="margin-top:8px">Sirf data dekho</button>
+  </div>
+</div>
 <script src="config.js"></script>
 <script src="i18n-hg.js"></script>
 <script src="app.js"></script>
