@@ -78,7 +78,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { db, TABLES } = require('./db');
-const { sendMail, mailConfig } = require('./mailer');
+const { sendMail, mailConfig, otpEmailHtml } = require('./mailer');
 const { qrSvg } = require('./qrcode');
 
 const app = express();
@@ -105,6 +105,30 @@ app.use((req, res, next) => {
   // Preflight is answered here, before any auth — the browser sends it
   // without credentials by design.
   if (req.method === 'OPTIONS') return res.status(204).end();
+  next();
+});
+
+// ---------- security headers (2026-11-22 hardening) ----------
+// Hand-rolled, no dependency, set on EVERY response (static files, API,
+// public pages). HSTS is only sent when the request actually arrived
+// over HTTPS (directly or via the deploy proxy's x-forwarded-proto) —
+// sending it on a plain-HTTP local install would be wrong. API JSON
+// responses are never cached and get a locked-down CSP (they are data,
+// never documents — the app's inline scripts live in HTML pages, which
+// deliberately carry NO CSP so nothing in the app can break).
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  if (req.secure || proto === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  }
+  if (String(req.path || '').startsWith('/api/')) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+  }
   next();
 });
 
@@ -149,31 +173,87 @@ for (const m of ['get', 'post', 'put', 'delete', 'use']) {
 function makeToken() { return crypto.randomBytes(32).toString('hex'); }
 
 function publicUser(u) {
-  return { id: u.id, business_id: u.business_id, name: u.name, email: u.email, role: u.role, access: u.access, blocked: !!u.blocked };
+  return { id: u.id, business_id: u.business_id, name: u.name, email: u.email, mobile: u.mobile || null, role: u.role, access: u.access, blocked: !!u.blocked };
 }
 function publicBusiness(b) {
   if (!b) return null;
+  // Two-stage workflow (2026-11-22): setup_complete now means WORKSPACE
+  // ACTIVE (shop details submitted via POST /api/workspace/activate, or
+  // a grandfathered shop that already trades). getBusiness computes
+  // workspace_active in SQL; rows fetched any other way fall back to the
+  // activation stamp alone.
+  const workspaceActive = b.workspace_active !== undefined && b.workspace_active !== null
+    ? !!Number(b.workspace_active)
+    : !!b.workspace_activated_at;
   return {
     id: b.id, name: b.name, owner_name: b.owner_name, phone: b.phone, city: b.city,
+    category: b.category || '', address: b.address || '', landmark: b.landmark || '',
+    pincode: b.pincode || '', state: b.state || '',
+    workspace_active: workspaceActive,
+    workspace_activated_at: b.workspace_activated_at || null,
     gst_enabled: !!b.gst_enabled, gstin: b.gstin,
     upi_id: b.upi_id || '', upi_payee_name: b.upi_payee_name || '',
     payment_qr: b.payment_qr || null,
     language: ['hi', 'hg'].includes(b.language) ? b.language : 'en',
-    setup_complete: !!(b.name && b.name.trim()),
+    setup_complete: workspaceActive,
     updated_at: b.updated_at, sync_status: b.sync_status
   };
 }
-async function getBusiness(id) { return await db.get('SELECT * FROM businesses WHERE id = ?', id); }
+async function getBusiness(id) {
+  return await db.get(
+    `SELECT b.*,
+       CASE WHEN b.workspace_activated_at IS NOT NULL THEN 1
+            WHEN EXISTS (SELECT 1 FROM invoices i WHERE i.business_id = b.id) THEN 1
+            WHEN EXISTS (SELECT 1 FROM products p WHERE p.business_id = b.id) THEN 1
+            ELSE 0 END AS workspace_active
+     FROM businesses b WHERE b.id = ?`
+  , id);
+}
+
+// Single source of truth for the two-stage workflow: a business's
+// WORKSPACE is active when it was activated through the setup form
+// (workspace_activated_at stamp) OR it is a grandfathered shop that
+// already trades (has at least one bill or one product — restored /
+// legacy data can carry no stamp). Accepts a business row or an id.
+async function isWorkspaceActive(bizOrId) {
+  if (bizOrId === null || bizOrId === undefined) return false;
+  let b = bizOrId;
+  if (typeof b !== 'object') b = await getBusiness(b);
+  if (!b) return false;
+  if (b.workspace_active !== undefined && b.workspace_active !== null) return !!Number(b.workspace_active);
+  if (b.workspace_activated_at) return true;
+  const inv = await db.get('SELECT COUNT(*) AS c FROM invoices WHERE business_id = ?', b.id);
+  if (Number(inv.c) > 0) return true;
+  const prod = await db.get('SELECT COUNT(*) AS c FROM products WHERE business_id = ?', b.id);
+  return Number(prod.c) > 0;
+}
 
 // ---------- auth middleware ----------
+// Session expiry (2026-11-22): a login session lives SESSION_TTL_DAYS
+// (30) from the moment it is issued — this is the LOGIN token only and
+// is deliberately separate from subscription/trial expiry, which never
+// logs anyone out (an expired plan LOCKS the workspace instead). An
+// expired session row is deleted on sight and the caller gets
+// 401 session_expired so the frontend can ask for a fresh login.
+const SESSION_TTL_DAYS = 30;
+function sessionExpiresAt() { return fmtTs(new Date(Date.now() + SESSION_TTL_DAYS * 86400000)); }
+function sessionExpired(expiresAt) {
+  // NULL = a legacy row the backfill somehow missed — treat as valid
+  // rather than logging a real user out over a migration edge.
+  return !!expiresAt && String(expiresAt) <= fmtTs(new Date());
+}
 async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'unauthorized' });
   const row = await db.get(
-    `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`
+    `SELECT u.*, s.expires_at AS sess_expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`
   , token);
   if (row) {
+    if (sessionExpired(row.sess_expires_at)) {
+      await db.run('DELETE FROM sessions WHERE token = ?', token);
+      return res.status(401).json({ error: 'session_expired' });
+    }
     // Admin Panel upgrade: a user blocked by the super admin is locked
     // out immediately — every request with their (still-existing) token
     // is refused, so a block takes effect without waiting for logout.
@@ -187,9 +267,13 @@ async function requireAuth(req, res, next) {
   // 'superadmin', and every business-scoped guard below treats it as an
   // outsider (requireOwner 403s it; admin routes require it explicitly).
   const arow = await db.get(
-    `SELECT a.* FROM admin_sessions s JOIN platform_admins a ON a.id = s.admin_id WHERE s.token = ?`
+    `SELECT a.*, s.expires_at AS sess_expires_at FROM admin_sessions s JOIN platform_admins a ON a.id = s.admin_id WHERE s.token = ?`
   , token);
   if (!arow) return res.status(401).json({ error: 'unauthorized' });
+  if (sessionExpired(arow.sess_expires_at)) {
+    await db.run('DELETE FROM admin_sessions WHERE token = ?', token);
+    return res.status(401).json({ error: 'session_expired' });
+  }
   req.user = { id: arow.id, business_id: null, name: arow.name, email: arow.email, role: 'superadmin', access: 'all' };
   req.token = token;
   req.isAdmin = true;
@@ -206,10 +290,29 @@ app.get('/api/health', async (req, res) => {
 });
 
 // ---------- auth API ----------
+// Login mobile: stored normalized as a plain 10-digit Indian mobile.
+// Spaces/dashes are stripped, then a leading +91 (or a 91 prefix on a
+// 12-digit string) comes off; the result must be exactly 10 digits
+// starting 6-9, else null. NOTE: the mobile is NOT OTP-verified — there
+// is no SMS provider. It is only a second login identifier; the email
+// OTP verification flow is completely unchanged.
+function normalizeMobile(raw) {
+  if (raw === undefined || raw === null) return null;
+  let d = String(raw).replace(/[\s-]+/g, '');
+  if (d.startsWith('+91')) d = d.slice(3);
+  else if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+  return /^[6-9]\d{9}$/.test(d) ? d : null;
+}
+
 app.post('/api/auth/signup', async (req, res) => {
-  const { name, email, password } = req.body || {};
+  const { name, email, password, mobile } = req.body || {};
   if (!name || !email || !password) return res.status(400).json({ error: 'name, email and password are required' });
   if (String(password).length < 6) return res.status(400).json({ error: 'password must be at least 6 characters' });
+  if (mobile === undefined || mobile === null || String(mobile).trim() === '') {
+    return res.status(400).json({ error: 'mobile_required' });
+  }
+  const mobileNorm = normalizeMobile(mobile);
+  if (!mobileNorm) return res.status(400).json({ error: 'invalid_mobile' });
   const emailNorm = String(email).trim().toLowerCase();
   const existing = await db.get('SELECT * FROM users WHERE email = ?', emailNorm);
   if (existing) {
@@ -219,6 +322,8 @@ app.post('/api/auth/signup', async (req, res) => {
     if (pend) return res.status(409).json({ error: 'email_pending_verification' });
     return res.status(409).json({ error: 'email already registered' });
   }
+  const mobExisting = await db.get('SELECT id FROM users WHERE mobile = ?', mobileNorm);
+  if (mobExisting) return res.status(409).json({ error: 'mobile_taken' });
 
   // Create empty business + owner user together — but PENDING: the user
   // row gets a pending_signups marker, no session is issued, and login
@@ -229,8 +334,8 @@ app.post('/api/auth/signup', async (req, res) => {
   , String(name).trim());
   const hash = bcrypt.hashSync(String(password), 10);
   const user = await db.run(
-    `INSERT INTO users (business_id, name, email, password_hash, role, access) VALUES (?, ?, ?, ?, 'owner', 'all')`
-  , biz.lastInsertRowid, String(name).trim(), emailNorm, hash);
+    `INSERT INTO users (business_id, name, email, mobile, password_hash, role, access) VALUES (?, ?, ?, ?, ?, 'owner', 'all')`
+  , biz.lastInsertRowid, String(name).trim(), emailNorm, mobileNorm, hash);
   await db.run('INSERT INTO pending_signups (user_id, email) VALUES (?, ?)', user.lastInsertRowid, emailNorm);
 
   const issued = await issueOtp(emailNorm, 'signup');
@@ -241,7 +346,11 @@ app.post('/api/auth/signup', async (req, res) => {
   });
 });
 
-// Verify the signup OTP → account activates, trial starts, session issued.
+// Verify the signup OTP → the ACCOUNT activates and a session is
+// issued. Two-stage workflow (2026-11-22): the 30-day trial does NOT
+// start here any more — it starts at WORKSPACE activation
+// (POST /api/workspace/activate). Business Mart buying works from this
+// moment; the workspace stays locked until the shop details are filled.
 app.post('/api/auth/verify-otp', async (req, res) => {
   const { email, otp } = req.body || {};
   if (!email || !otp) return res.status(400).json({ error: 'email and otp are required' });
@@ -253,9 +362,8 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   const v = await verifyOtp(emailNorm, 'signup', otp);
   if (v.error) return res.status(400).json(v);
   await db.run('DELETE FROM pending_signups WHERE user_id = ?', u.id);
-  await ensureSubscription(u.business_id); // 30-day trial starts at verification
   const token = makeToken();
-  await db.run('INSERT INTO sessions (token, user_id) VALUES (?, ?)', token, u.id);
+  await db.run('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)', token, u.id, sessionExpiresAt());
   res.json({ token, user: publicUser(u), business: publicBusiness(await getBusiness(u.business_id)) });
 });
 
@@ -317,33 +425,95 @@ app.post('/api/auth/reset-password', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- login attempt limit (2026-11-22 hardening) ----------
+// Failed logins are counted per identifier AND per IP in login_attempts.
+// 5 wrong tries on one identifier (or 20 from one IP) locks that key
+// for 15 minutes — while locked, even the CORRECT password gets a 429,
+// so password guessing is pointless. A successful login clears the
+// identifier's counter (the IP counter simply ages out: rows untouched
+// for 24h are deleted opportunistically on login calls).
+const LOGIN_ID_MAX_ATTEMPTS = 5;
+const LOGIN_IP_MAX_ATTEMPTS = 20;
+const LOGIN_LOCK_MIN = 15;
+async function loginLockMinutes(key) {
+  const row = await db.get('SELECT * FROM login_attempts WHERE key = ?', key);
+  if (row && row.locked_until && String(row.locked_until) > fmtTs(new Date())) {
+    return Math.max(1, Math.ceil((parseTs(row.locked_until).getTime() - Date.now()) / 60000));
+  }
+  return 0;
+}
+async function recordLoginFailure(key, maxAttempts) {
+  const now = fmtTs(new Date());
+  const row = await db.get('SELECT * FROM login_attempts WHERE key = ?', key);
+  const attempts = (row ? Number(row.attempts) : 0) + 1;
+  const lockedUntil = attempts >= maxAttempts ? fmtTs(new Date(Date.now() + LOGIN_LOCK_MIN * 60000)) : (row ? row.locked_until : null);
+  if (row) {
+    await db.run('UPDATE login_attempts SET attempts = ?, locked_until = ?, last_at = ? WHERE key = ?', attempts, lockedUntil, now, key);
+  } else {
+    await db.run('INSERT INTO login_attempts (key, attempts, locked_until, last_at) VALUES (?, ?, ?, ?)', key, attempts, lockedUntil, now);
+  }
+}
+
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
-  const emailNorm = String(email).trim().toLowerCase();
-  const u = await db.get('SELECT * FROM users WHERE email = ?', emailNorm);
+  const body = req.body || {};
+  // The identifier arrives as `identifier` (current frontend) or as the
+  // original `email` field (older clients — still accepted). An
+  // identifier containing '@' is an email; anything else is treated as
+  // a mobile number and normalized the same way as at signup. Every
+  // failure below returns the SAME generic 401 — the response never
+  // reveals whether the identifier or the password was wrong.
+  const ident = body.identifier !== undefined ? body.identifier : body.email;
+  const password = body.password;
+  if (!ident || !password) return res.status(400).json({ error: 'email and password are required' });
+  const idStr = String(ident).trim();
+  const isEmail = idStr.includes('@');
+  const emailNorm = isEmail ? idStr.toLowerCase() : null;
+
+  // Attempt limit: checked BEFORE the password — a locked identifier or
+  // IP is refused outright, correct password or not.
+  const idKey = 'id:' + (isEmail ? emailNorm : (normalizeMobile(idStr) || idStr.toLowerCase()));
+  const ipKey = 'ip:' + (req.ip || 'unknown');
+  await db.run('DELETE FROM login_attempts WHERE last_at < ?', fmtTs(new Date(Date.now() - 24 * 3600000)));
+  const lockMin = Math.max(await loginLockMinutes(idKey), await loginLockMinutes(ipKey));
+  if (lockMin > 0) {
+    return res.status(429).json({ error: 'too_many_attempts', retry_after_min: lockMin });
+  }
+
+  let u = null;
+  if (isEmail) {
+    u = await db.get('SELECT * FROM users WHERE email = ?', emailNorm);
+  } else {
+    const mob = normalizeMobile(idStr);
+    if (mob) u = await db.get('SELECT * FROM users WHERE mobile = ?', mob);
+  }
   if (u && bcrypt.compareSync(String(password), u.password_hash)) {
+    await db.run('DELETE FROM login_attempts WHERE key = ?', idKey); // password sahi — counter saaf
     // SaaS Stage 2: an OTP-pending account cannot log in yet.
     const pend = await db.get('SELECT id FROM pending_signups WHERE user_id = ?', u.id);
     if (pend) return res.status(403).json({ error: 'email_not_verified' });
     // Admin Panel upgrade: a user blocked by the super admin cannot log in.
     if (u.blocked) return res.status(403).json({ error: 'account_blocked' });
     const token = makeToken();
-    await db.run('INSERT INTO sessions (token, user_id) VALUES (?, ?)', token, u.id);
+    await db.run('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)', token, u.id, sessionExpiresAt());
     return res.json({ token, user: publicUser(u), business: publicBusiness(await getBusiness(u.business_id)) });
   }
-  // SaaS Stage 2: the same login form serves the DILIGENCE super admin
-  // (seeded from SUPER_ADMIN_* env into platform_admins at boot).
-  const adm = await db.get('SELECT * FROM platform_admins WHERE email = ?', emailNorm);
-  if (adm && bcrypt.compareSync(String(password), adm.password_hash)) {
-    const token = makeToken();
-    await db.run('INSERT INTO admin_sessions (token, admin_id) VALUES (?, ?)', token, adm.id);
-    return res.json({
-      token,
-      user: { id: adm.id, business_id: null, name: adm.name, email: adm.email, role: 'superadmin', access: 'all' },
-      business: null
-    });
+  if (isEmail) {
+    // SaaS Stage 2: the same login form serves the DILIGENCE super admin
+    // (seeded from SUPER_ADMIN_* env into platform_admins at boot).
+    const adm = await db.get('SELECT * FROM platform_admins WHERE email = ?', emailNorm);
+    if (adm && bcrypt.compareSync(String(password), adm.password_hash)) {
+      await db.run('DELETE FROM login_attempts WHERE key = ?', idKey);
+      const token = makeToken();
+      await db.run('INSERT INTO admin_sessions (token, admin_id, expires_at) VALUES (?, ?, ?)', token, adm.id, sessionExpiresAt());
+      return res.json({
+        token,
+        user: { id: adm.id, business_id: null, name: adm.name, email: adm.email, role: 'superadmin', access: 'all' },
+        business: null
+      });
+    }
   }
+  await recordLoginFailure(idKey, LOGIN_ID_MAX_ATTEMPTS);
+  await recordLoginFailure(ipKey, LOGIN_IP_MAX_ATTEMPTS);
   return res.status(401).json({ error: 'invalid email or password' });
 });
 
@@ -357,6 +527,27 @@ app.get('/api/me', requireAuth, async (req, res) => {
   if (req.isAdmin) return res.json({ user: publicUser(req.user), business: null });
   const b = await getBusiness(req.user.business_id);
   res.json({ user: publicUser(req.user), business: publicBusiness(b) });
+});
+
+// Set/update the signed-in user's OWN login mobile (the owner Settings
+// screen uses this; the route only ever touches req.user's own row, so
+// nobody can change another user's number). Same validation and
+// uniqueness as signup. An empty value clears the mobile — email login
+// always remains available, so clearing can never lock anyone out.
+app.put('/api/auth/mobile', requireAuth, async (req, res) => {
+  if (req.isAdmin) return res.status(403).json({ error: 'admin_only' });
+  const raw = (req.body || {}).mobile;
+  if (raw === undefined) return res.status(400).json({ error: 'mobile_required' });
+  let mobileNorm = null;
+  if (raw !== null && String(raw).trim() !== '') {
+    mobileNorm = normalizeMobile(raw);
+    if (!mobileNorm) return res.status(400).json({ error: 'invalid_mobile' });
+    const dup = await db.get('SELECT id FROM users WHERE mobile = ? AND id != ?', mobileNorm, req.user.id);
+    if (dup) return res.status(409).json({ error: 'mobile_taken' });
+  }
+  await db.run(`UPDATE users SET mobile = ?, updated_at = datetime('now') WHERE id = ?`, mobileNorm, req.user.id);
+  const u = await db.get('SELECT * FROM users WHERE id = ?', req.user.id);
+  res.json({ ok: true, user: publicUser(u) });
 });
 
 // =====================================================================
@@ -399,7 +590,8 @@ async function issueOtp(email, purpose) {
     ? 'BizYour — password reset code'
     : 'BizYour — verify your email';
   const mail = await sendMail(email, subject,
-    `Your BizYour code is ${code}. It is valid for ${OTP_TTL_MIN} minutes. If you did not ask for this, ignore this email.`);
+    `Your BizYour code is ${code}. It is valid for ${OTP_TTL_MIN} minutes. If you did not ask for this, ignore this email.`,
+    otpEmailHtml(code, purpose, OTP_TTL_MIN));
   return { ok: true, mail_configured: mail.mail_configured, sent: mail.sent };
 }
 
@@ -479,6 +671,20 @@ function subscriptionState(sub) {
   };
 }
 async function getSubscriptionState(bizId) {
+  // Two-stage workflow (2026-11-22): a business whose WORKSPACE is not
+  // active yet has NO subscription at all — the 30-day trial starts at
+  // activation, so no row is created here. The synthetic 'none' state
+  // is deliberately read_only:false (nothing exists to lock; the
+  // workspaceGate is what keeps account-only users out of the data).
+  if (!(await isWorkspaceActive(bizId))) {
+    return {
+      status: 'none', plan_code: null,
+      trial_ends_at: null, paid_until: null,
+      grace_days: 7, blocked: false,
+      ends_at: null, days_left: 0,
+      read_only: false
+    };
+  }
   return subscriptionState(await ensureSubscription(bizId));
 }
 function publicPlan(p) {
@@ -1316,6 +1522,140 @@ app.post('/api/onboarding/whatsapp-done', requireAuth, requireOwner, async (req,
   res.json(await onboardingState(req.user.business_id));
 });
 
+// ---------- two-stage account → workspace workflow (2026-11-22) ----------
+// A BizYour ACCOUNT (signup + email OTP) unlocks Business Mart BUYING
+// immediately. The WORKSPACE (billing / udhaar / dashboard — every
+// business-data API) stays locked until the owner submits the shop
+// setup form (POST /api/workspace/activate), which is also the moment
+// the 30-day trial starts. Mart SELLING needs the workspace too.
+const SHOP_CATEGORIES = ['kirana', 'electronics', 'mobile', 'medical', 'garments', 'food', 'hardware', 'beauty', 'services', 'other'];
+const INDIAN_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya',
+  'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim',
+  'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand',
+  'West Bengal',
+  'Andaman and Nicobar Islands', 'Chandigarh',
+  'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+  'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
+];
+// (GSTIN_RE itself is declared once, further down with the GSTR-1 code.)
+
+// Validates the shop-setup fields. partial=false (activation) → every
+// field is required and fully checked. partial=true (PUT /api/business,
+// the Settings edit) → ONLY the new setup fields are checked, and only
+// when a non-empty value is supplied (an empty value just clears the
+// field, exactly as Settings always behaved); name/phone/city keep
+// their legacy free-form handling there — activation is the strict
+// gate, Settings must never start rejecting a legacy shop's saves.
+// Returns { error } or { values }.
+function validateShopFields(body, partial) {
+  const has = (k) => body[k] !== undefined;
+  const v = {};
+  if (!partial) {
+    v.name = String(body.name || '').trim();
+    if (v.name.length < 3) return { error: 'shop_name_required' };
+    const mob = normalizeMobile(body.phone);
+    if (!mob) return { error: 'invalid_mobile' };
+    v.phone = mob;
+    v.city = String(body.city || '').trim();
+    if (v.city.length < 2) return { error: 'city_required' };
+  }
+  if (!partial || has('category')) {
+    const cat = String(body.category || '').trim().toLowerCase();
+    if (!partial || cat) {
+      if (!SHOP_CATEGORIES.includes(cat)) return { error: 'invalid_category' };
+      v.category = cat;
+    }
+  }
+  if (!partial || has('address')) {
+    const addr = String(body.address || '').trim();
+    if (!partial || addr) {
+      if (addr.length < 8) return { error: 'address_required' };
+      v.address = addr;
+    }
+  }
+  if (has('landmark')) v.landmark = String(body.landmark || '').trim();
+  if (!partial || has('pincode')) {
+    const pin = String(body.pincode || '').trim();
+    if (!partial || pin) {
+      if (!/^\d{6}$/.test(pin)) return { error: 'invalid_pincode' };
+      v.pincode = pin;
+    }
+  }
+  if (!partial || has('state')) {
+    const st = String(body.state || '').trim();
+    if (!partial || st) {
+      if (!INDIAN_STATES.includes(st)) return { error: 'invalid_state' };
+      v.state = st;
+    }
+  }
+  // GST: when billing is on, the GSTIN must be a real-format one.
+  const gstOn = body.gst_enabled !== undefined ? !!body.gst_enabled : null;
+  if (gstOn) {
+    const gstin = String(body.gstin || '').trim().toUpperCase();
+    if (!GSTIN_RE.test(gstin)) return { error: 'invalid_gstin' };
+    v.gstin = gstin;
+  }
+  return { values: v };
+}
+
+// Mart routes that are SELLER-classified (method + path) — the gate
+// blocks them for account-only businesses; mart.js enforces the same
+// split again on its own routes (backstop).
+const MART_SELLER_ROUTES = [
+  ['PUT', /^\/api\/mart\/profile$/],
+  ['GET', /^\/api\/mart\/leads$/],
+  ['POST', /^\/api\/mart\/inquiries\/\d+\/quotes$/],
+  ['PUT', /^\/api\/mart\/quotes\/\d+$/],
+  ['POST', /^\/api\/mart\/quotes\/\d+\/withdraw$/],
+  ['GET', /^\/api\/mart\/quotes-sent$/],
+  ['POST', /^\/api\/mart\/orders\/\d+\/status$/],
+  ['POST', /^\/api\/mart\/listings$/],
+  ['PUT', /^\/api\/mart\/listings\/\d+$/],
+  ['DELETE', /^\/api\/mart\/listings\/\d+$/],
+  ['GET', /^\/api\/mart\/my-listings$/],
+  ['GET', /^\/api\/mart\/summary$/],
+  ['GET', /^\/api\/mart\/report$/],
+  ['GET', /^\/api\/mart\/restock$/],
+  ['GET', /^\/api\/mart\/match-preview$/]
+];
+function isMartSellerRoute(method, p) {
+  return MART_SELLER_ROUTES.some(([m, re]) => m === method && re.test(p));
+}
+
+// The gate itself, registered IMMEDIATELY BEFORE subscriptionGuard.
+// Routes registered earlier (auth, subscription, payments, admin,
+// onboarding) never reach it. /api/business and /api/workspace/* are
+// exempted by path below — the setup flow itself must stay reachable,
+// and PUT /api/business cannot fake activation (it never touches
+// workspace_activated_at). Session resolution mirrors subscriptionGuard:
+// no token / unknown / admin token → pass through, routes decide.
+async function workspaceGate(req, res, next) {
+  const p = String(req.originalUrl || '').split('?')[0];
+  if (p === '/api/me' || p === '/api/business') return next();
+  if (p.startsWith('/api/workspace/') || p.startsWith('/api/public/')) return next();
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return next();
+  const row = await db.get(
+    `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`
+  , token);
+  if (!row) return next(); // admin token or unknown — routes decide
+  if (p.startsWith('/api/mart/')) {
+    // Buyer-classified Mart paths are open to every account; seller
+    // paths additionally need an active workspace.
+    if (isMartSellerRoute(req.method, p) && !(await isWorkspaceActive(row.business_id))) {
+      return res.status(403).json({ error: 'workspace_not_setup' });
+    }
+    return next();
+  }
+  if (await isWorkspaceActive(row.business_id)) return next();
+  return res.status(403).json({ error: 'workspace_not_setup' });
+}
+app.use('/api', workspaceGate);
+
 // ---------- read-only enforcement (SaaS Stage 2) ----------
 // Registered AFTER the auth / subscription / payment / admin / onboarding
 // routes above and BEFORE every business-data route below: when a
@@ -1361,11 +1701,25 @@ app.put('/api/business', requireAuth, requireOwner, async (req, res) => {
   const cur = await getBusiness(req.user.business_id);
   if (!cur) return res.status(404).json({ error: 'business not found' });
 
+  // Two-stage workflow: the shop-setup fields are accepted here too
+  // (Settings edits them after activation) and validated whenever a
+  // non-empty value is supplied. Note this route never touches
+  // workspace_activated_at — editing details cannot fake activation.
+  if (['category', 'address', 'landmark', 'pincode', 'state'].some((k) => body[k] !== undefined)) {
+    const chk = validateShopFields(body, true);
+    if (chk.error) return res.status(400).json({ error: chk.error });
+  }
+
   const next = {
     name: body.name !== undefined ? String(body.name).trim() : cur.name,
     owner_name: body.owner_name !== undefined ? String(body.owner_name).trim() : cur.owner_name,
     phone: body.phone !== undefined ? String(body.phone).trim() : cur.phone,
     city: body.city !== undefined ? String(body.city).trim() : cur.city,
+    category: body.category !== undefined ? String(body.category).trim().toLowerCase() : (cur.category || ''),
+    address: body.address !== undefined ? String(body.address).trim() : (cur.address || ''),
+    landmark: body.landmark !== undefined ? String(body.landmark).trim() : (cur.landmark || ''),
+    pincode: body.pincode !== undefined ? String(body.pincode).trim() : (cur.pincode || ''),
+    state: body.state !== undefined ? String(body.state).trim() : (cur.state || ''),
     gst_enabled: body.gst_enabled !== undefined ? (body.gst_enabled ? 1 : 0) : cur.gst_enabled,
     gstin: body.gstin !== undefined ? String(body.gstin).trim().toUpperCase() : cur.gstin,
     upi_id: body.upi_id !== undefined ? String(body.upi_id).trim() : (cur.upi_id || ''),
@@ -1389,10 +1743,43 @@ app.put('/api/business', requireAuth, requireOwner, async (req, res) => {
   }
   if (!next.gst_enabled) next.gstin = body.gstin !== undefined ? next.gstin : cur.gstin;
   await db.run(
-    `UPDATE businesses SET name=?, owner_name=?, phone=?, city=?, gst_enabled=?, gstin=?, upi_id=?, upi_payee_name=?, language=?, payment_qr=?,
+    `UPDATE businesses SET name=?, owner_name=?, phone=?, city=?, category=?, address=?, landmark=?, pincode=?, state=?, gst_enabled=?, gstin=?, upi_id=?, upi_payee_name=?, language=?, payment_qr=?,
        updated_at=datetime('now'), sync_status='local' WHERE id=?`
-  , next.name, next.owner_name, next.phone, next.city, next.gst_enabled, next.gstin, next.upi_id, next.upi_payee_name, next.language, paymentQr, req.user.business_id);
+  , next.name, next.owner_name, next.phone, next.city, next.category, next.address, next.landmark, next.pincode, next.state, next.gst_enabled, next.gstin, next.upi_id, next.upi_payee_name, next.language, paymentQr, req.user.business_id);
   res.json({ business: publicBusiness(await getBusiness(req.user.business_id)) });
+});
+
+// ---------- workspace activation (two-stage workflow) ----------
+// The shop setup form submits HERE (not PUT /api/business): all details
+// are validated, the business is stamped workspace_activated_at, and
+// the 30-day trial starts at THIS moment. Re-submitting after
+// activation simply updates the details — the stamp (and the trial)
+// are never reset.
+app.post('/api/workspace/activate', requireAuth, requireOwner, async (req, res) => {
+  const body = req.body || {};
+  const cur = await getBusiness(req.user.business_id);
+  if (!cur) return res.status(404).json({ error: 'business not found' });
+  const chk = validateShopFields(body, false);
+  if (chk.error) return res.status(400).json({ error: chk.error });
+  const v = chk.values;
+  const gstEnabled = body.gst_enabled ? 1 : 0;
+  const ownerName = body.owner_name !== undefined ? String(body.owner_name).trim() : cur.owner_name;
+  const language = body.language !== undefined
+    ? (['hi', 'hg'].includes(body.language) ? body.language : 'en') : cur.language;
+  await db.run(
+    `UPDATE businesses SET name=?, owner_name=?, phone=?, city=?, category=?, address=?, landmark=?, pincode=?, state=?,
+       gst_enabled=?, gstin=?, language=?,
+       workspace_activated_at = COALESCE(workspace_activated_at, ?),
+       updated_at=datetime('now'), sync_status='local' WHERE id=?`
+  , v.name, ownerName, v.phone, v.city, v.category, v.address, v.landmark || '', v.pincode, v.state,
+    gstEnabled, gstEnabled ? (v.gstin || '') : (body.gstin !== undefined ? String(body.gstin).trim().toUpperCase() : cur.gstin),
+    language, fmtTs(new Date()), req.user.business_id);
+  await ensureSubscription(req.user.business_id); // 30-day trial starts NOW
+  await auditLog(req, 'update', 'workspace', req.user.business_id, `Workspace activate hua: ${v.name} (${v.city}, ${v.state})`);
+  res.json({
+    business: publicBusiness(await getBusiness(req.user.business_id)),
+    subscription: await getSubscriptionState(req.user.business_id)
+  });
 });
 
 // ---------- Stage 6: data backup (owner-only) ----------
@@ -5789,7 +6176,7 @@ app.get('/api/sync/conflicts', requireAuth, requireOwner, async (req, res) => {
 // ---------- BizYour: Business Mart (B2B marketplace) ----------
 // Lives in mart.js; registered here so it sits behind the subscription
 // guard (read-only shops cannot post/quote/order) and before the 404.
-require('./mart').registerMart(app, { db, requireAuth, requireOwner, auditLog, round2, validNum, queueSync });
+require('./mart').registerMart(app, { db, requireAuth, requireOwner, auditLog, round2, validNum, queueSync, isWorkspaceActive });
 
 // ---------- Stage 6: API fallbacks ----------
 // Unknown /api/* routes get a JSON 404 (never the SPA HTML).
@@ -5855,7 +6242,7 @@ const HISAB_PAGE_HTML = `<!DOCTYPE html>
   var S = {
     en: { sub: 'Bills and payments — live account', title: 'Account', due: 'Total balance (to pay)', credit: 'You have a credit', clear: 'Account is clear', bills: 'Bills', noBills: 'No bills', opening: 'Previous balance (Opening Balance)', bal: 'Balance ', paid: 'Fully paid', pays: 'Payments (made by you)', noPays: 'No payments yet', foot: function (n) { return 'This account is live from ' + n + "'s app"; }, off: 'Link is off', offMsg: 'This account link no longer works. Please ask the shop for a new link.' },
     hi: { sub: 'बिल और पेमेंट — लाइव हिसाब', title: 'हिसाब', due: 'कुल बाकी (देना है)', credit: 'आपका जमा है', clear: 'हिसाब साफ़ है', bills: 'बिल', noBills: 'कोई बिल नहीं है', opening: 'पिछला बाकी (Opening Balance)', bal: 'बाकी ', paid: 'पूरा मिला', pays: 'पेमेंट (जो आपने दिए)', noPays: 'अभी कोई पेमेंट नहीं है', foot: function (n) { return 'ये हिसाब ' + n + ' के app से लाइव है'; }, off: 'लिंक बंद है', offMsg: 'ये हिसाब लिंक अब काम नहीं कर रहा। दुकान से नया लिंक माँगें।' },
-    hg: { sub: 'Bills aur payments — live hisaab', title: 'Hisaab', due: 'Kul baaki (dena hai)', credit: 'Aapka credit hai', clear: 'Hisaab clear hai', bills: 'Bills', noBills: T.noBills, opening: T.opening, bal: 'Baaki ', paid: 'Poora mila', pays: T.pays, noPays: T.noPays, foot: function (n) { return 'Ye hisaab ' + n + ' ke app se live hai'; }, off: 'Link band hai', offMsg: 'Ye hisaab link ab kaam nahi kar raha. Dukaan se naya link maangein.' }
+    hg: { sub: 'Bills aur payments — live hisaab', title: 'Hisaab', due: 'Kul baaki (dena hai)', credit: 'Aapka credit hai', clear: 'Hisaab clear hai', bills: 'Bills', noBills: 'Abhi koi bill nahi hai', opening: 'Pichla baaki (Opening Balance)', bal: 'Baaki ', paid: 'Poora mila', pays: 'Payments (jo aapne diye)', noPays: 'Abhi koi payment nahi hai', foot: function (n) { return 'Ye hisaab ' + n + ' ke app se live hai'; }, off: 'Link band hai', offMsg: 'Ye hisaab link ab kaam nahi kar raha. Dukaan se naya link maangein.' }
   };
   var T = S.en;
   fetch('/api/public/hisab/' + encodeURIComponent(token))
@@ -5973,7 +6360,11 @@ async function ensureSaaSBoot() {
     }
   }
   const bizs = await db.all('SELECT id FROM businesses');
-  for (const b of bizs) await ensureSubscription(b.id);
+  // Two-stage workflow: only workspace-active shops get the migration
+  // trial. Account-only businesses (signed up, shop not set up yet)
+  // must NOT gain a subscription row here — their trial starts at
+  // workspace activation, not at boot.
+  for (const b of bizs) { if (await isWorkspaceActive(b.id)) await ensureSubscription(b.id); }
 }
 
 // ---------- boot: init the data layer (creates schema), then listen ----------
