@@ -37,6 +37,7 @@
   }
   function errText(e) {
     const map = {
+      workspace_not_setup: L('Your workspace is not set up yet. Fill your shop details first — then selling unlocks.', 'Workspace setup बाकी है — पहले दुकान की details भरो, फिर बेचना खुलेगा।', 'Workspace setup baaki hai — pehle dukaan ki details bharo, phir bechna khulega.'),
       below_moq: L('Your quantity is below this seller\'s minimum order. Increase the quantity in a new inquiry or ask the seller in chat.', 'आपकी मात्रा seller के minimum order से कम है। Chat में पूछो या नई inquiry डालो।'),
       quote_expired: L('This quote has expired. Ask the seller to update it.', 'ये quote expire हो गया है। Seller से update करवाओ।'),
       quote_locked: L('This quote can no longer be changed.', 'ये quote अब बदला नहीं जा सकता।'),
@@ -126,15 +127,45 @@
   ACT.logout = () => { const b = $('logoutBtn'); if (b) b.click(); };
   ACT.mode = (d) => { M.mode = d.m; go(d.m === 'buy' ? 'home' : 'leads'); };
 
+  // ---------- two-stage workflow (2026-11-22) ----------
+  // Buying works on the account alone; SELLING needs the workspace.
+  // For a not-yet-activated business the seller views route to the
+  // shop-setup prompt instead of calling seller APIs (the server 403
+  // workspace_not_setup remains the backstop and is handled in go()).
+  const wsPending = () => !!(me && me.business && !me.business.setup_complete);
+  const SELLER_VIEWS = ['leads', 'sent', 'catalog', 'profile', 'report'];
+  function wsSetupPrompt() {
+    $('martView').innerHTML = `<div class="card mk-smart" style="max-width:720px">
+      <h3>🏪 ${L('Workspace setup pending', 'Workspace setup बाकी है', 'Workspace setup baaki hai')}</h3>
+      <div class="hint">${L('Selling on Business Mart needs your shop workspace. Fill your shop details once — name, category, address, PIN code — and selling unlocks. Buying works right away.', 'Business Mart पर बेचने के लिए दुकान का workspace चाहिए। एक बार दुकान की details भरो — नाम, category, पता, PIN code — बेचना खुल जाएगा। खरीदना अभी भी चल रहा है।', 'Business Mart par bechne ke liye dukaan ka workspace chahiye. Ek baar dukaan ki details bharo — naam, category, pata, PIN code — bechna khul jayega. Kharidna abhi bhi chal raha hai.')}</div>
+      ${me.user.role === 'owner' ? `<button class="btn mk-wbtn" data-act="wsSetup">${L('Fill shop details →', 'दुकान की details भरो →', 'Dukaan ki details bharo →')}</button>` : `<div class="hint">${L('Ask the owner to complete the shop setup.', 'Owner से shop setup करवाओ।', 'Owner se shop setup karwao.')}</div>`}
+    </div>`;
+  }
+  ACT.wsSetup = () => { if (typeof openSetup === 'function') openSetup(); };
+  function wsBanner() {
+    if (!wsPending()) return;
+    const bn = document.createElement('div');
+    bn.className = 'mk-ws-banner';
+    bn.innerHTML = `🏪 ${L('Want to sell too? Complete your Workspace setup first', 'बेचना भी है? पहले Workspace setup पूरा करो', 'Bechna bhi hai? Pehle Workspace setup pura karo')}${me.user.role === 'owner' ? ` — <a href="#" data-act="wsSetup">${L('Set up →', 'Setup करो →', 'Setup karo →')}</a>` : ''}`;
+    $('martView').prepend(bn);
+  }
+
   async function go(view, arg) {
     M.view = view; M.arg = arg === undefined ? null : arg;
     renderNav();
     const t = TITLES[view] || TITLES.home;
     $('pageTitle').textContent = L(t[0], t[1]);
-    $('martView').innerHTML = `<div class="hint" style="padding:30px;text-align:center">${L('Loading…', 'लोड हो रहा है…')}</div>`;
     window.scrollTo(0, 0);
-    try { await (V[view] || V.home)(M.arg); }
-    catch (e) { $('martView').innerHTML = `<div class="card"><div class="err" style="display:block">${esc(errText(e))}</div></div>`; }
+    if (wsPending() && SELLER_VIEWS.includes(view)) { wsSetupPrompt(); refreshSummary(); return; }
+    $('martView').innerHTML = `<div class="hint" style="padding:30px;text-align:center">${L('Loading…', 'लोड हो रहा है…')}</div>`;
+    try {
+      await (V[view] || V.home)(M.arg);
+      wsBanner();
+    }
+    catch (e) {
+      if (e && e.message === 'workspace_not_setup') wsSetupPrompt();
+      else $('martView').innerHTML = `<div class="card"><div class="err" style="display:block">${esc(errText(e))}</div></div>`;
+    }
     refreshSummary();
   }
 
@@ -165,12 +196,17 @@
 
   // ---------- BUY: home ----------
   V.home = async () => {
+    // Summary + restock are seller/workspace-side reads: for an
+    // account-only buyer they answer 403 workspace_not_setup — the
+    // Mart home must still render (buying works), so both degrade to
+    // empty instead of failing the whole view.
     const [sum, rs1, inqs, lst] = await Promise.all([
-      api('GET', '/api/mart/summary'), api('GET', '/api/mart/restock'),
+      api('GET', '/api/mart/summary').catch(() => null),
+      api('GET', '/api/mart/restock').catch(() => ({ items: [] })),
       api('GET', '/api/mart/inquiries'), api('GET', '/api/mart/listings')
     ]);
     M.summary = sum;
-    const b = sum.buying;
+    const b = sum ? sum.buying : { open_inquiries: inqs.inquiries.filter((i) => i.status === 'open').length, new_quotes: 0, active_orders: 0, spend: 0 };
     const withQuotes = inqs.inquiries.filter((i) => i.status === 'open' && i.quotes_count > 0).slice(0, 4);
     const popular = lst.listings.filter((l) => !l.mine).slice(0, 4);
     $('martView').innerHTML = `
@@ -986,6 +1022,15 @@
       } catch (e) { /* default */ }
       go('orders', id);
     }
+  };
+
+  // app.js calls this when the subscription lock lifts while the user
+  // is inside the Mart — re-render the current view in place.
+  window.BOS_martRefresh = () => {
+    if (M.module !== 'mart') return;
+    renderNav();
+    (V[M.view] || V.home)(M.arg).catch(() => {});
+    refreshSummary();
   };
 
   // ===================================================================
